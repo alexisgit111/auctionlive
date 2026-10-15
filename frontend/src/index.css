@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-surface font-sans text-ink antialiased;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+}
+
+/* Visible, consistent focus ring for keyboard operation */
+:focus-visible {
+  outline: 3px solid #00a1e9;
+  outline-offset: 2px;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-md px-4 py-2 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .btn-primary {
+    @apply btn bg-brand text-white hover:bg-brand-600;
+  }
+  .btn-navy {
+    @apply btn bg-navy-700 text-white hover:bg-navy-600;
+  }
+  .btn-ghost {
+    @apply btn border border-line bg-transparent text-ink hover:bg-subtle-2;
+  }
+  .btn-danger {
+    @apply btn bg-bad text-white hover:bg-red-600;
+  }
+  .btn-ok {
+    @apply btn bg-ok text-white hover:bg-green-700;
+  }
+  .panel {
+    @apply rounded-lg border border-line bg-surface-2;
+  }
+  .panel-title {
+    @apply text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted;
+  }
+  .field {
+    @apply w-full rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-faint focus:border-brand;
+  }
+  .label {
+    @apply mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@keyframes bid-flash {
+  from {
+    background-color: rgba(0, 161, 233, 0.35);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.bid-flash {
+  animation: bid-flash 300ms ease-out;
+}

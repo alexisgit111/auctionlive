@@ -1,0 +1,68 @@
+/**
+ * Public display serializer — EXPLICIT WHITELIST.
+ * Every field the room display receives is listed here by hand. Nothing is
+ * spread from the source objects, so new private fields can never leak by accident.
+ */
+import { formatCents } from '../lib/money'
+import type { AuctionState, PublicDisplayState, PublicStatus, Session } from './types'
+
+export const BRAND_NAME = 'Harcourts Golden Links'
+
+export function derivePublicStatus(s: Pick<AuctionState, 'sessionStatus' | 'saleStatus'>): PublicStatus {
+  if (s.saleStatus === 'SOLD') return 'SOLD'
+  if (s.saleStatus === 'PASSED_IN') return 'PASSED_IN'
+  switch (s.sessionStatus) {
+    case 'NOT_STARTED':
+      return 'NOT_STARTED'
+    case 'PAUSED':
+      return 'PAUSED'
+    case 'ENDED':
+      return 'ENDED'
+    case 'LIVE':
+      return s.saleStatus === 'ON_THE_MARKET' ? 'ON_THE_MARKET' : 'LIVE'
+  }
+}
+
+export function toPublicState(session: Session, state: AuctionState, serverTime: string): PublicDisplayState {
+  return {
+    sessionId: state.sessionId,
+    stateVersion: state.stateVersion,
+    sessionStatus: state.sessionStatus,
+    saleStatus: state.saleStatus,
+    publicStatus: derivePublicStatus(state),
+    currentBidCents: state.currentBidCents,
+    currentBidDisplay: state.currentBidCents ? formatCents(state.currentBidCents) : '',
+    property: {
+      addressLine: session.property.addressLine,
+      suburb: session.property.suburb,
+      city: session.property.city,
+      heroImage: session.property.heroImage,
+      bedrooms: session.property.bedrooms ?? null,
+      bathrooms: session.property.bathrooms ?? null,
+      parking: session.property.parking ?? null,
+      landAreaM2: session.property.landAreaM2 ?? null,
+      floorAreaM2: session.property.floorAreaM2 ?? null,
+      badge: session.property.badge ?? '',
+    },
+    auctioneer: { name: session.auctioneerName ?? '', photo: session.auctioneerPhoto ?? null },
+    brand: { name: BRAND_NAME },
+    serverTime,
+  }
+}
+
+/** Keys that must never appear anywhere in a public payload (checked in tests). */
+export const FORBIDDEN_PUBLIC_KEYS = [
+  'reserveCents',
+  'reserve',
+  'internalNotes',
+  'notes',
+  'reason',
+  'operatorId',
+  'operator',
+  'idempotencyKey',
+  'bids',
+  'events',
+  'leaseToken',
+  'tokenHash',
+  'createdBy',
+] as const

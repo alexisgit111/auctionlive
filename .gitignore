@@ -1,0 +1,9 @@
+node_modules
+dist
+test-results
+playwright-report
+*.log
+.DS_Store
+.env
+.env.local
+_to_delete/
