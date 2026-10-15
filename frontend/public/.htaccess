@@ -1,0 +1,29 @@
+# Golden Links Auction Live — Apache config for Cloudways (single-page app)
+Options -MultiViews -Indexes
+RewriteEngine On
+RewriteBase /
+
+# Force HTTPS (Cloudways sits behind Nginx; check the forwarded protocol too)
+RewriteCond %{HTTPS} !=on
+RewriteCond %{HTTP:X-Forwarded-Proto} !https
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Real files and folders are served as-is; every app route (/auction/...) goes to index.html
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+RewriteRule ^ index.html [L]
+
+<IfModule mod_headers.c>
+  # index.html is never cached, so a new deploy shows immediately
+  <FilesMatch "^index\.html$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+  </FilesMatch>
+  # Built assets have hashed names and can be cached for a year
+  <FilesMatch "\.(js|css|woff2?|svg)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "same-origin"
+  Header always set X-Frame-Options "SAMEORIGIN"
+</IfModule>

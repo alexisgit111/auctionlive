@@ -1,0 +1,46 @@
+# Builds the frontend on every push to main and publishes the ready-to-serve
+# files to the `cloudways` branch. Cloudways "Deployment via Git" pulls that
+# branch into public_html — no Node.js needed on the server.
+name: Build for Cloudways
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cloudways-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+        env:
+          VITE_BRAND_WEBSITE: goldenlinks.co.nz
+
+      - name: Publish build to the cloudways branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: frontend/dist
+          publish_branch: cloudways
+          force_orphan: true
+          commit_message: 'build: ${{ github.sha }}'
