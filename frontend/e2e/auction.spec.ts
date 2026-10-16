@@ -36,7 +36,7 @@ test('full auction: pair display, bid, on the market, faults, sold', async ({ co
         const db = JSON.parse(localStorage.getItem('gl-auction-db-v1')!)
         const s = Object.values(db.sessions)[0] as Record<string, unknown> & { property: Record<string, unknown> }
         Object.assign(s.property, { heroImage: photo, badge: 'Brought Forward', addressLine: '15 Example Avenue', suburb: 'Flat Bush' })
-        Object.assign(s, { auctioneerName: 'Jane Smith', auctioneerPhoto: person })
+        Object.assign(s, { salespeople: [{ name: 'Jane Smith', photo: person }, { name: 'Michael Chen', photo: null }] })
         localStorage.setItem('gl-auction-db-v1', JSON.stringify(db))
       },
       [photo, person],
@@ -62,7 +62,7 @@ test('full auction: pair display, bid, on the market, faults, sold', async ({ co
   await consolePage.getByRole('button', { name: 'Approve' }).click()
   await display.waitForURL(/\/auction\/display\//)
   await expect(display.getByTestId('display-status')).toHaveText(/Auction live/i)
-  await expect(display.getByTestId('display-auctioneer')).toBeVisible()
+  if (process.env.DEMO_PHOTO) await expect(display.getByTestId('display-salespeople')).toBeVisible()
 
   // Bids in each accepted format
   await enterBid(consolePage, '950K')

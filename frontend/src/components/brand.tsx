@@ -34,8 +34,8 @@ export function PropertyImage({ src, alt = '' }: { src: string | null | undefine
   return url ? <img src={url} alt={alt} className="h-full w-full object-cover" /> : <PropertyPlaceholder />
 }
 
-/** Auctioneer portrait (cover-cropped), or a neutral silhouette when missing. */
-export function AuctioneerPhoto({ src }: { src: string | null | undefined }) {
+/** Person portrait (cover-cropped), or a neutral silhouette when missing. */
+export function PersonPhoto({ src }: { src: string | null | undefined }) {
   const url = useImage(src)
   if (url) return <img src={url} alt="" className="h-full w-full object-cover object-top" />
   return (

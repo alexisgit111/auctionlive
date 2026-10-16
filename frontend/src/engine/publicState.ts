@@ -4,7 +4,7 @@
  * spread from the source objects, so new private fields can never leak by accident.
  */
 import { formatCents } from '../lib/money'
-import type { AuctionState, PublicDisplayState, PublicStatus, Session } from './types'
+import { MAX_SALESPEOPLE, type AuctionState, type PublicDisplayState, type PublicStatus, type Session } from './types'
 
 export const BRAND_NAME = 'Harcourts Golden Links'
 
@@ -44,7 +44,10 @@ export function toPublicState(session: Session, state: AuctionState, serverTime:
       floorAreaM2: session.property.floorAreaM2 ?? null,
       badge: session.property.badge ?? '',
     },
-    auctioneer: { name: session.auctioneerName ?? '', photo: session.auctioneerPhoto ?? null },
+    salespeople: (session.salespeople ?? [])
+      .filter((p) => p.name?.trim())
+      .slice(0, MAX_SALESPEOPLE)
+      .map((p) => ({ name: p.name.trim(), photo: p.photo ?? null })),
     brand: { name: BRAND_NAME },
     serverTime,
   }
@@ -65,4 +68,5 @@ export const FORBIDDEN_PUBLIC_KEYS = [
   'leaseToken',
   'tokenHash',
   'createdBy',
+  'auctioneerName',
 ] as const

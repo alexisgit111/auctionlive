@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { loadCredential, saveCredential, useDisplaySync } from '../app/displaySync'
-import { AuctioneerPhoto, BrandLogo, PropertyImage } from '../components/brand'
+import { BrandLogo, PersonPhoto, PropertyImage } from '../components/brand'
 import { BathIcon, BedIcon, FloorIcon, GarageIcon, LandIcon } from '../components/display/icons'
-import type { DisplayOverlay, PublicDisplayState, PublicStatus } from '../engine/types'
+import type { DisplayOverlay, PublicDisplayState, PublicStatus, Salesperson } from '../engine/types'
 
 /**
  * Independent Room Display — 16:9, white-based, readable from distance.
@@ -166,7 +166,7 @@ function Stage({ state, overlay }: { state: PublicDisplayState | null; overlay: 
         )}
       </div>
 
-      {/* ── Current bid + auctioneer ── */}
+      {/* ── Current bid + salespeople ── */}
       <div className="absolute left-[66.5cqw] right-[0.5cqw] top-[11.4cqw] flex h-[40.6cqw] flex-col">
         <div className="flex flex-1 flex-col items-center justify-center">
           <div className="text-[3cqw] font-light leading-none text-navy">{label}</div>
@@ -192,17 +192,7 @@ function Stage({ state, overlay }: { state: PublicDisplayState | null; overlay: 
           )}
         </div>
 
-        {state?.auctioneer?.name && (
-          <div className="mx-[2cqw] mb-[1.4cqw] flex items-center gap-[1.8cqw] border-t border-line pt-[1.8cqw]" data-testid="display-auctioneer">
-            <div className="h-[9.5cqw] w-[9.5cqw] shrink-0 overflow-hidden rounded-full border-[0.3cqw] border-brand bg-white">
-              <AuctioneerPhoto src={state.auctioneer.photo} />
-            </div>
-            <div className="min-w-0">
-              <div className="text-[1.15cqw] font-bold uppercase tracking-[0.24em] text-brand">Auctioneer</div>
-              <div className="mt-[0.4cqw] truncate text-[2.5cqw] font-semibold leading-tight text-navy">{state.auctioneer.name}</div>
-            </div>
-          </div>
-        )}
+        {state && state.salespeople?.length > 0 && <Salespeople people={state.salespeople} />}
       </div>
 
       {/* ── Footer bar ── */}
@@ -231,6 +221,37 @@ function Stage({ state, overlay }: { state: PublicDisplayState | null; overlay: 
         <div className="absolute inset-0 flex items-center justify-center bg-white text-[2cqw] font-semibold text-ink-faint">Connecting…</div>
       )}
     </StageFrame>
+  )
+}
+
+/** One salesperson: photo beside name. Two: side by side, photo above name. */
+function Salespeople({ people }: { people: Salesperson[] }) {
+  const two = people.length > 1
+  return (
+    <div className="mx-[2cqw] mb-[1.2cqw] border-t border-line pt-[1.4cqw]" data-testid="display-salespeople">
+      <div className={`text-[1.1cqw] font-bold uppercase tracking-[0.24em] text-brand ${two ? 'text-center' : ''}`}>
+        {two ? 'Salespeople' : 'Salesperson'}
+      </div>
+      {two ? (
+        <div className="mt-[1cqw] grid grid-cols-2 gap-[1.6cqw]">
+          {people.map((p) => (
+            <div key={p.name} className="flex min-w-0 flex-col items-center text-center">
+              <div className="h-[7.6cqw] w-[7.6cqw] shrink-0 overflow-hidden rounded-full border-[0.25cqw] border-brand bg-white">
+                <PersonPhoto src={p.photo} />
+              </div>
+              <div className="mt-[0.7cqw] line-clamp-2 text-[1.75cqw] font-semibold leading-tight text-navy">{p.name}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-[0.9cqw] flex items-center gap-[1.8cqw]">
+          <div className="h-[9cqw] w-[9cqw] shrink-0 overflow-hidden rounded-full border-[0.3cqw] border-brand bg-white">
+            <PersonPhoto src={people[0].photo} />
+          </div>
+          <div className="min-w-0 text-[2.5cqw] font-semibold leading-tight text-navy">{people[0].name}</div>
+        </div>
+      )}
+    </div>
   )
 }
 

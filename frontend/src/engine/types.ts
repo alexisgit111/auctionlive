@@ -31,13 +31,22 @@ export interface Property {
   badge: string
 }
 
+export interface Salesperson {
+  name: string
+  /** Stored image reference, URL or data URI */
+  photo: string | null
+}
+
+export const MAX_SALESPEOPLE = 2
+
 export interface Session {
   id: string
   title: string
   scheduledAt: string
+  /** Internal record only — not shown on the room display */
   auctioneerName: string
-  /** Auctioneer photo: stored image reference, URL or data URI (shown on room display) */
-  auctioneerPhoto: string | null
+  /** Listing salespeople shown on the room display (0–2) */
+  salespeople: Salesperson[]
   defaultIncrementCents: string
   /** PRIVATE — never sent to a display */
   reserveCents: string | null
@@ -181,7 +190,7 @@ export interface PublicDisplayState {
     floorAreaM2: number | null
     badge: string
   }
-  auctioneer: { name: string; photo: string | null }
+  salespeople: Salesperson[]
   brand: { name: string }
   serverTime: string
 }

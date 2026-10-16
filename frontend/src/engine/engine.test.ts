@@ -109,8 +109,12 @@ describe('public display serializer', () => {
     id: 's1',
     title: 't',
     scheduledAt: 'x',
-    auctioneerName: 'Jane Auctioneer',
-    auctioneerPhoto: 'idb-image:photo',
+    auctioneerName: 'Secret Auctioneer',
+    salespeople: [
+      { name: 'Jane Smith', photo: 'idb-image:photo' },
+      { name: 'Li Wei', photo: null },
+      { name: 'Third Person', photo: null },
+    ],
     defaultIncrementCents: '100',
     reserveCents: '999999900',
     internalNotes: 'VENDOR WILL ACCEPT 1.2M',
@@ -131,7 +135,11 @@ describe('public display serializer', () => {
     for (const f of FORBIDDEN_PUBLIC_KEYS) expect(keys.has(f)).toBe(false)
     expect(json).not.toContain('999999900')
     expect(json).not.toContain('VENDOR')
-    expect(pub.auctioneer).toEqual({ name: 'Jane Auctioneer', photo: 'idb-image:photo' })
+    expect(json).not.toContain('Secret Auctioneer')
+    expect(pub.salespeople).toEqual([
+      { name: 'Jane Smith', photo: 'idb-image:photo' },
+      { name: 'Li Wei', photo: null },
+    ])
     expect(pub.currentBidDisplay).toBe('$1,275,000')
   })
 

@@ -4,18 +4,18 @@ import { Link } from 'react-router-dom'
 import { useSessions } from '../app/hooks'
 import { server } from '../app/server'
 import { useUser } from '../app/user'
-import { AuctioneerPhoto, PropertyImage } from '../components/brand'
+import { PersonPhoto, PropertyImage } from '../components/brand'
 import { putImage } from '../lib/imageStore'
 import { ErrorNote } from '../components/ui'
 import type { SessionInput } from '../engine/mockServer'
-import type { Session } from '../engine/types'
+import { MAX_SALESPEOPLE, type Salesperson, type Session } from '../engine/types'
 import { formatCents, formatCompact, parseBidInput } from '../lib/money'
 
 const blank = (): FormState => ({
   title: '',
   scheduledAt: new Date(Date.now() + 86400000).toISOString().slice(0, 16),
   auctioneerName: '',
-  auctioneerPhoto: null,
+  salespeople: [],
   increment: '10K',
   reserve: '',
   internalNotes: '',
@@ -35,7 +35,7 @@ interface FormState {
   title: string
   scheduledAt: string
   auctioneerName: string
-  auctioneerPhoto: string | null
+  salespeople: Salesperson[]
   increment: string
   reserve: string
   internalNotes: string
@@ -63,7 +63,7 @@ const fromSession = (s: Session): FormState => ({
   title: s.title,
   scheduledAt: s.scheduledAt.slice(0, 16),
   auctioneerName: s.auctioneerName,
-  auctioneerPhoto: s.auctioneerPhoto ?? null,
+  salespeople: (s.salespeople ?? []).map((p) => ({ ...p })),
   increment: formatCompact(s.defaultIncrementCents),
   reserve: s.reserveCents ? formatCompact(s.reserveCents) : '',
   internalNotes: s.internalNotes,
@@ -129,7 +129,7 @@ export function SessionsPage() {
       title: form.title || `${form.addressLine}`,
       scheduledAt: new Date(form.scheduledAt).toISOString(),
       auctioneerName: form.auctioneerName,
-      auctioneerPhoto: form.auctioneerPhoto,
+      salespeople: form.salespeople.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), photo: p.photo })),
       defaultIncrementCents: inc.cents.toString(),
       reserveCents,
       internalNotes: form.internalNotes,
@@ -232,30 +232,61 @@ export function SessionsPage() {
               <Field label="Auction date & time">
                 <input type="datetime-local" className="field" value={form.scheduledAt} onChange={set('scheduledAt')} />
               </Field>
-              <div className="col-span-2 flex items-end gap-4 rounded-md border border-line bg-subtle p-3">
-                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-full border border-line bg-white">
-                  <AuctioneerPhoto src={form.auctioneerPhoto} />
+              <Field label="Auctioneer (internal record)">
+                <input className="field" value={form.auctioneerName} onChange={set('auctioneerName')} placeholder="e.g. John Doe" />
+              </Field>
+              <div className="col-span-2 rounded-md border border-line bg-subtle p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="label mb-0">Salespeople shown on room display (max {MAX_SALESPEOPLE})</span>
+                  {form.salespeople.length < MAX_SALESPEOPLE && (
+                    <button
+                      className="btn-ghost bg-white px-3 py-1 text-sm"
+                      onClick={() => setForm({ ...form, salespeople: [...form.salespeople, { name: '', photo: null }] })}
+                    >
+                      + Add salesperson
+                    </button>
+                  )}
                 </div>
-                <Field label="Auctioneer name (shown on room display)" className="flex-1">
-                  <input className="field bg-white" value={form.auctioneerName} onChange={set('auctioneerName')} placeholder="e.g. Jane Smith" />
-                </Field>
-                <label className="btn-ghost cursor-pointer bg-white px-3 py-2 text-sm">
-                  {form.auctioneerPhoto ? 'Change photo…' : 'Upload photo…'}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="sr-only"
-                    onChange={async (e) => {
-                      const f = e.target.files?.[0]
-                      if (f) setForm({ ...form, auctioneerPhoto: await putImage(await resizeImage(f, 600)) })
-                    }}
-                  />
-                </label>
-                {form.auctioneerPhoto && (
-                  <button className="btn-ghost bg-white px-3 py-2 text-sm" onClick={() => setForm({ ...form, auctioneerPhoto: null })}>
-                    Remove
-                  </button>
-                )}
+                {form.salespeople.length === 0 && <p className="text-sm text-ink-muted">None — the room display will not show a salesperson.</p>}
+                <div className="space-y-2">
+                  {form.salespeople.map((p, i) => {
+                    const update = (patch: Partial<Salesperson>) =>
+                      setForm({ ...form, salespeople: form.salespeople.map((x, j) => (j === i ? { ...x, ...patch } : x)) })
+                    return (
+                      <div key={i} className="flex items-center gap-3">
+                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full border border-line bg-white">
+                          <PersonPhoto src={p.photo} />
+                        </div>
+                        <input
+                          className="field flex-1 bg-white"
+                          value={p.name}
+                          aria-label={`Salesperson ${i + 1} name`}
+                          onChange={(e) => update({ name: e.target.value })}
+                          placeholder={`Salesperson ${i + 1} name`}
+                        />
+                        <label className="btn-ghost cursor-pointer bg-white px-3 py-2 text-sm">
+                          {p.photo ? 'Change photo…' : 'Upload photo…'}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            onChange={async (e) => {
+                              const f = e.target.files?.[0]
+                              if (f) update({ photo: await putImage(await resizeImage(f, 600)) })
+                            }}
+                          />
+                        </label>
+                        <button
+                          className="btn-ghost bg-white px-3 py-2 text-sm"
+                          aria-label={`Remove salesperson ${i + 1}`}
+                          onClick={() => setForm({ ...form, salespeople: form.salespeople.filter((_, j) => j !== i) })}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
               <Field label="Default increment">
                 <input className="field" value={form.increment} onChange={set('increment')} placeholder="10K" />

@@ -26,6 +26,8 @@ import {
   type EventType,
   type OperatorLease,
   type Pairing,
+  type Salesperson,
+  MAX_SALESPEOPLE,
   type PublicDisplayState,
   type Session,
   type User,
@@ -92,7 +94,7 @@ export interface SessionInput {
   title: string
   scheduledAt: string
   auctioneerName: string
-  auctioneerPhoto: string | null
+  salespeople: Salesperson[]
   defaultIncrementCents: string
   reserveCents: string | null
   internalNotes: string
@@ -196,7 +198,7 @@ export function createMockServer(deps: ServerDeps) {
     for (const r of db.outbox) {
       // Never keep inline image data in the queue (legacy rows).
       if (r.payload.property.heroImage?.startsWith('data:')) r.payload.property.heroImage = null
-      if (r.payload.auctioneer?.photo?.startsWith('data:')) r.payload.auctioneer.photo = null
+      for (const p of r.payload.salespeople ?? []) if (p.photo?.startsWith('data:')) p.photo = null
     }
     const keys = Object.values(db.idempotency).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     const maxIdem = aggressive ? 50 : 300
@@ -343,7 +345,7 @@ export function createMockServer(deps: ServerDeps) {
         title: 'Demo auction',
         scheduledAt: now,
         auctioneerName: 'Auctioneer',
-        auctioneerPhoto: null,
+        salespeople: [],
         defaultIncrementCents: (10_000n * 100n).toString(),
         reserveCents: (1_300_000n * 100n).toString(),
         internalNotes: 'Demo session for Phase 1A testing.',
@@ -772,9 +774,11 @@ export function createMockServer(deps: ServerDeps) {
           s.property.heroImage = await store(s.property.heroImage)
           n++
         }
-        if (s.auctioneerPhoto?.startsWith('data:')) {
-          s.auctioneerPhoto = await store(s.auctioneerPhoto)
-          n++
+        for (const p of s.salespeople ?? []) {
+          if (p.photo?.startsWith('data:')) {
+            p.photo = await store(p.photo)
+            n++
+          }
         }
       }
       compact(db, true)
@@ -794,6 +798,8 @@ export function createMockServer(deps: ServerDeps) {
 function validateSessionInput(i: SessionInput) {
   if (!i.title.trim()) throw new ApiError('VALIDATION_FAILED', 'Title is required', 422)
   if (!i.property.addressLine.trim()) throw new ApiError('VALIDATION_FAILED', 'Property address is required', 422)
+  if ((i.salespeople ?? []).length > MAX_SALESPEOPLE)
+    throw new ApiError('VALIDATION_FAILED', `At most ${MAX_SALESPEOPLE} salespeople can be shown`, 422)
   if (!/^[1-9][0-9]*$/.test(i.defaultIncrementCents))
     throw new ApiError('VALIDATION_FAILED', 'Default increment must be a positive amount', 422)
   if (i.reserveCents !== null && !/^[1-9][0-9]*$/.test(i.reserveCents))
