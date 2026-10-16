@@ -36,6 +36,12 @@ Turn on **Auto Renewal**. (Do this after DNS resolves, or Let's Encrypt fails.)
    - Deployment path: `public_html` (leave the box empty = public_html)
    - **Start Deployment**
 
+## Note on Nginx-only stacks
+
+Cloudways' Nginx-only stack ignores `.htaccess` and routes unknown paths to `index.php`.
+`frontend/public/index.php` returns `index.html`, so app routes work on both stack types.
+Do not delete `index.php` from `public_html`.
+
 ## 4. Every later update
 
 1. Push to `main`.
@@ -53,7 +59,7 @@ Note: the room display page will also ask for this password once per browser.
 ## 6. Check it
 
 - `https://auction.harcourts3kings.co.nz/auction/control` loads the console.
-- Refreshing any `/auction/...` page does **not** show 404 (handled by `.htaccess`).
+- Refreshing any `/auction/...` page does **not** show 404 (handled by `index.php`, which serves the app shell; `.htaccess` does the same on Apache stacks).
 - `http://` redirects to `https://`.
 
 ## Limits of the Phase 1A prototype online
