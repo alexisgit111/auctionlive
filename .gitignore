@@ -7,3 +7,7 @@ playwright-report
 .env
 .env.local
 _to_delete/
+
+# server secrets — never commit
+config.local.php
+auction-live-config.php

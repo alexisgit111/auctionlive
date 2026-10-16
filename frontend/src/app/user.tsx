@@ -1,41 +1,69 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
-import { DEMO_USERS } from '../engine/mockServer'
+import { useQueryClient } from '@tanstack/react-query'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { User } from '../engine/types'
+import { server } from './server'
 
 /**
- * Phase 1A identity: pick a demo user per browser tab (sessionStorage), so two
- * windows can act as two different staff members. Phase 1B → Sanctum login.
+ * Signed-in staff member. In http mode the PHP session cookie is the source of truth;
+ * in mock mode a demo user is kept per browser tab.
  */
-const KEY = 'gl-auction-user'
-
-function initial(): User {
-  try {
-    const id = sessionStorage.getItem(KEY)
-    const u = DEMO_USERS.find((x) => x.id === id)
-    if (u) return u
-  } catch {
-    /* ignore */
-  }
-  return DEMO_USERS.find((u) => u.role === 'admin')!
+interface AuthState {
+  user: User | null
+  loading: boolean
+  error: string | null
+  login: (email: string, password: string) => Promise<User>
+  logout: () => Promise<void>
+  refresh: () => Promise<void>
 }
 
-const Ctx = createContext<{ user: User; setUser: (u: User) => void } | null>(null)
+const Ctx = createContext<AuthState | null>(null)
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [user, set] = useState<User>(initial)
-  const setUser = (u: User) => {
+  const qc = useQueryClient()
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = useCallback(async () => {
     try {
-      sessionStorage.setItem(KEY, u.id)
-    } catch {
-      /* ignore */
+      setUser(await server.auth.me())
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
     }
-    set(u)
+  }, [])
+
+  useEffect(() => void refresh(), [refresh])
+
+  const login = async (email: string, password: string) => {
+    const u = await server.auth.login(email, password)
+    qc.clear()
+    setUser(u)
+    return u
   }
-  return <Ctx.Provider value={{ user, setUser }}>{children}</Ctx.Provider>
+  const logout = async () => {
+    try {
+      await server.auth.logout()
+    } finally {
+      qc.clear()
+      setUser(null)
+    }
+  }
+
+  return <Ctx.Provider value={{ user, loading, error, login, logout, refresh }}>{children}</Ctx.Provider>
 }
 
-export function useUser() {
+export function useAuth(): AuthState {
   const c = useContext(Ctx)
   if (!c) throw new Error('UserProvider missing')
   return c
+}
+
+/** For pages inside the signed-in staff area (StaffShell guarantees a user). */
+export function useUser(): { user: User } {
+  const { user } = useAuth()
+  if (!user) throw new Error('useUser() used outside the signed-in area')
+  return { user }
 }

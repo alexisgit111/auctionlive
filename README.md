@@ -6,9 +6,19 @@ In-room auction control, room display and electronic scribing for Harcourts Gold
 ```
 AUCTION LIVE/
 ├─ docs/        PRD, architecture, database, API, real-time, failure recovery, acceptance criteria
-├─ frontend/    React + TypeScript + Vite + Tailwind (Phase 1A prototype — runs today)
-└─ backend/     Laravel API (Phase 1B — not started)
+├─ frontend/    React + TypeScript + Vite + Tailwind
+└─ backend/     PHP 8.1+ API (plain PHP + PDO, MySQL on Cloudways / SQLite for tests)
 ```
+
+## Two modes
+
+| | Prototype (`npm run dev`) | Server (`VITE_BACKEND=http`, what Cloudways runs) |
+|---|---|---|
+| Data | this browser only | MySQL — shared by every computer |
+| Sign-in | demo accounts, password `demo1234` | real staff accounts (Users page) |
+| Room display sync | same browser windows | any computer, checks the server every second |
+
+Deployment: see `docs/DEPLOY-CLOUDWAYS.md`.
 
 ## Phase 1A — run the prototype
 
@@ -58,10 +68,17 @@ Double-click the room display to go fullscreen.
 
 `#001D4A` deep navy · `#00A1E9` primary blue · `#FFFFFF` · Source Sans (Source Sans 3, the current release of Source Sans Pro, bundled locally so it works offline).
 Official logo: `frontend/src/assets/brand/logo.svg` (navy, for white backgrounds) and `logo-white.svg` (reversed).
-Auctioneer name and photo are set per session (Sessions → Edit) and shown on the room display under the bid.
+Up to two salespeople (name + photo) are set per session and shown on the room display under the bid.
 
-## Next: Phase 1B
+## Server API (Phase 1B, lightweight)
 
-Laravel 11 API + MySQL migrations per `docs/DATABASE.md`, Sanctum auth, `AuctionCommandService` porting
-`frontend/src/engine/engine.ts` 1:1 (its tests become the shared contract), idempotency middleware, lease middleware,
-public display serializer, outbox. See `docs/ARCHITECTURE.md` §3 for the Cloudways WebSocket checks to do first.
+`backend/api/` — plain PHP, no framework, so it deploys with the same Git branch as the frontend.
+`lib/engine.php` is a 1:1 port of `frontend/src/engine/engine.ts`; same rules, same response shapes.
+Implements: staff sign-in (PHP session cookie), admin/operator roles, sessions, the 8-step command protocol
+(lock → idempotency → lease → version → state machine → audit event → commit), operator lease and takeover,
+display pairing with hashed device tokens, whitelisted public display state, image storage in MySQL.
+Real-time is 1-second polling (works on any Cloudways stack); WebSockets can be added later without changing the UI.
+
+Tests: `node --test backend/tests/api.test.mjs` against a running server with an empty database
+(see the CI workflow for the exact commands). Playwright `e2e/http.spec.ts` runs the whole flow with
+three separate browser contexts (office, console, room display).

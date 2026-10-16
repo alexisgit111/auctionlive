@@ -166,7 +166,7 @@ export function SessionsPage() {
           <h1 className="text-2xl font-bold text-navy">Auction sessions</h1>
           <p className="text-sm text-ink-muted">Set up the property, increment and private reserve before auction day.</p>
         </div>
-        <button
+        {server.mode === 'mock' && (<button
           className={`ml-auto mr-2 text-sm ${confirmReset ? 'btn-danger' : 'btn-ghost'}`}
           disabled={!isAdmin}
           onClick={() => {
@@ -178,7 +178,7 @@ export function SessionsPage() {
           onBlur={() => setConfirmReset(false)}
         >
           {confirmReset ? 'Click again to erase all local prototype data' : 'Reset prototype data'}
-        </button>
+        </button>)}
         <button
           className="btn-primary"
           disabled={!isAdmin}

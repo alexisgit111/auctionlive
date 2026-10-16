@@ -1,69 +1,58 @@
-# Deploying to Cloudways (Phase 1A prototype)
+# Deploying to Cloudways
 
-Test URL: **https://auction.harcourts3kings.co.nz**
-
-The prototype is a static site: GitHub Actions builds it and Cloudways only serves files.
-No Node.js, database or Supervisor is needed on the server for Phase 1A.
+Live URL: **https://auction.harcourts3kings.co.nz**
 
 ```
-push to main ──► GitHub Actions: npm ci → tests → build ──► branch `cloudways` (built files)
-                                                                   │
-                         Cloudways "Deployment via Git" ── pull ───┘──► public_html
+push to main ──► GitHub Actions: tests → build (frontend + /api) ──► branch `cloudways`
+                                                                        │
+                    Cloudways "Deployment via Git" — Pull ──────────────┴──► public_html
+                                                                              ├─ index.html, index.php, assets/  (the app)
+                                                                              └─ api/                           (PHP API)
+<app>/private_html/auction-live-config.php  ← database password, NOT in Git
+MySQL database (Cloudways)                  ← all sessions, bids, audit trail, staff accounts, photos
 ```
 
-## 1. Map the domain (fixes "403 Website Unavailable")
+## One-time setup
 
-Cloudways → **Applications** → your Auction Live app → **Domain Management**
-→ add `auction.harcourts3kings.co.nz` → **Make Primary**.
+### 1. Domain + SSL
+Application → **Domain Management** → `auction.harcourts3kings.co.nz` → Make Primary.
+Application → **SSL Certificate** → Let's Encrypt → Install, Auto Renewal on.
 
-DNS: an `A` record for `auction` pointing to the server's public IP (shown on the server page).
+### 2. Database settings file
+1. Cloudways → Application → **Access Details → MySQL Access**: note *DB Name*, *Username*, *Password*.
+2. Copy `backend/api/config.example.php`, fill in those three values and a long random `setup_key`.
+3. SFTP: upload it as **`private_html/auction-live-config.php`** (the folder *next to* `public_html`, so it is never web-accessible).
+   Alternative if `private_html` is not available: `public_html/api/config.local.php`.
 
-## 2. SSL
+Tables are created automatically on the first request.
 
-Same app → **SSL Certificate** → **Let's Encrypt** → email + `auction.harcourts3kings.co.nz` → Install.
-Turn on **Auto Renewal**. (Do this after DNS resolves, or Let's Encrypt fails.)
+### 3. Git deployment
+1. GitHub → Actions → **Build for Cloudways** must be green (creates the `cloudways` branch).
+2. Cloudways → **Deployment via Git** → Generate SSH key → add it in GitHub → Settings → **Deploy keys**.
+3. Remote `git@github.com:alexisgit111/auctionlive.git`, branch **`cloudways`**, path `public_html` → Start Deployment.
 
-## 3. Connect Git (one time)
+Manual alternative: download the `cloudways` branch as ZIP from GitHub and upload its contents to `public_html` by SFTP.
 
-1. Push `main` once with `.github/workflows/deploy-cloudways.yml` in it.
-   GitHub → **Actions** tab → wait for **Build for Cloudways** to go green.
-   This creates the `cloudways` branch.
-2. Cloudways → app → **Deployment via Git** → **Generate SSH keys** → **View SSH key** → copy.
-3. GitHub → repo → **Settings → Deploy keys → Add deploy key** → paste, read-only is enough.
-4. Back in Cloudways:
-   - Git remote address: `git@github.com:alexisgit111/auctionlive.git`
-   - **Authenticate** → Branch: **`cloudways`**
-   - Deployment path: `public_html` (leave the box empty = public_html)
-   - **Start Deployment**
+### 4. First admin
+Open the site → you are sent to **First-time setup** → enter the `setup_key`, your name, email and password.
+The setup page disables itself once an admin exists. Then add staff under **Users**.
 
-## Note on Nginx-only stacks
+## Every update
+Push to `main` → wait for the green tick → Cloudways **Pull**.
+A failing test stops the build, so a broken version never reaches the server.
 
-Cloudways' Nginx-only stack ignores `.htaccess` and routes unknown paths to `index.php`.
-`frontend/public/index.php` returns `index.html`, so app routes work on both stack types.
-Do not delete `index.php` from `public_html`.
+Do **not** delete from `public_html`: `index.php` (serves the app on Nginx) and `api/`.
 
-## 4. Every later update
+## Checks
+- `https://auction.harcourts3kings.co.nz/api/index.php?r=/health` → `{"ok":true,...}`
+- `/auction/control` → sign-in page; after sign-in the console.
+- Same sessions visible from a second computer.
+- `https://auction.harcourts3kings.co.nz/api/lib/core.php` → empty page or 404 (never code).
 
-1. Push to `main`.
-2. Wait for the green tick in GitHub Actions (about 1 minute).
-3. Cloudways → **Deployment via Git** → **Pull**.
-
-If a test fails, the build stops and nothing is published, so a broken version never reaches the server.
-
-## 5. Protect it (recommended — internal tool)
-
-Cloudways → app → **Application Settings → Password Protection** → enable, set a username and password.
-
-Note: the room display page will also ask for this password once per browser.
-
-## 6. Check it
-
-- `https://auction.harcourts3kings.co.nz/auction/control` loads the console.
-- Refreshing any `/auction/...` page does **not** show 404 (handled by `index.php`, which serves the app shell; `.htaccess` does the same on Apache stacks).
-- `http://` redirects to `https://`.
-
-## Limits of the Phase 1A prototype online
-
-Data lives in each browser's local storage. The console and room display must be windows of the
-**same browser on the same computer** (e.g. laptop + TV as an extended screen).
-Two separate computers will sync only after Phase 1B/1C (Laravel API + WebSockets) is deployed.
+## Troubleshooting
+| Symptom | Cause / fix |
+|---|---|
+| "Server is not configured yet" | Config file missing or in the wrong folder (step 2) |
+| "Cannot connect to the database" | Wrong DB name / user / password in the config file |
+| 404 on `/auction/...` | `public_html/index.php` missing — Pull again |
+| Room display shows CONNECTION LOST | Display PC offline, or the session ended and the display was revoked — re-pair |

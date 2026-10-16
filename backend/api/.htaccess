@@ -1,0 +1,5 @@
+# Apache stacks: never serve library or config files directly
+<FilesMatch "^(config\.local\.php|config\.example\.php)$">
+  Require all denied
+</FilesMatch>
+RedirectMatch 404 ^/api/lib/

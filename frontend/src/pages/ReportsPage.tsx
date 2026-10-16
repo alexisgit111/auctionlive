@@ -2,12 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useSessions } from '../app/hooks'
 import { server } from '../app/server'
-import { DEMO_USERS } from '../engine/mockServer'
 import type { AuctionEvent, Bid } from '../engine/types'
 import { formatCents } from '../lib/money'
 import { downloadFile } from '../lib/offlineStore'
 
-const userName = (id: string | null) => (id ? (DEMO_USERS.find((u) => u.id === id)?.name ?? id) : '—')
+let names = new Map<string, string>()
+const userName = (id: string | null) => (id ? (names.get(id) ?? id) : '—')
 const ts = (iso: string) => new Date(iso).toLocaleString('en-NZ', { hour12: false })
 
 function describe(e: AuctionEvent): string {
@@ -65,6 +65,8 @@ export function ReportsPage() {
   useEffect(() => {
     if (!sid && sessions.data?.length) setSid(sessions.data[0].session.id)
   }, [sessions.data, sid])
+  const users = useQuery({ queryKey: ['user-names'], queryFn: () => server.auth.listUsers(), staleTime: 60_000 })
+  names = new Map((users.data ?? []).map((u) => [u.id, u.name]))
   const events = useQuery({ queryKey: ['events', sid], queryFn: () => server.staff.getEvents(sid!), enabled: !!sid, refetchInterval: 2000 })
   const bids = useQuery({ queryKey: ['bids', sid], queryFn: () => server.staff.getBids(sid!), enabled: !!sid, refetchInterval: 2000 })
   const session = sessions.data?.find((s) => s.session.id === sid)

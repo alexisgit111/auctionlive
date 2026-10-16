@@ -30,7 +30,7 @@ export function saveCredential(c: DisplayCredential | null) {
   }
 }
 
-const HEARTBEAT_MS = 2000
+const HEARTBEAT_MS = server.displayPollMs
 const LOST_AFTER_MS = 5000
 
 /**

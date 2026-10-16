@@ -1,11 +1,12 @@
-# Backend — Phase 1B (not started)
+# Backend — PHP API
 
-Laravel 11 + MySQL 8 + Sanctum + Reverb (or managed Pusher-compatible provider).
+Plain PHP 8.1+ with PDO. MySQL in production (Cloudways), SQLite for automated tests.
 
-Planned layout and contracts: `../docs/ARCHITECTURE.md` §6, `../docs/DATABASE.md`, `../docs/API.md`, `../docs/REALTIME.md`.
+- `api/index.php` — router (`/api/index.php?r=/route`)
+- `api/lib/engine.php` — auction state machine, 1:1 port of `frontend/src/engine/engine.ts`
+- `api/lib/handlers.php` — routes: auth, users, sessions, commands, lease, pairing, display, images
+- `api/config.example.php` — copy to `<app>/private_html/auction-live-config.php` on the server
+- `tests/api.test.mjs` — integration tests (`node --test`) against a running server
+- `dev/router.php` — local `php -S` router that behaves like Cloudways Nginx
 
-Port `../frontend/src/engine/engine.ts` (state machine) and `../frontend/src/lib/money.ts` (K/M parsing, integer cents)
-first, and mirror their unit tests in PHPUnit so frontend and backend share one rule set.
-
-Before building: verify on Cloudways staging whether Supervisor + WebSocket proxying are available (ARCHITECTURE.md §3).
-No connection to any live Golden Links database without explicit approval.
+Deployment: `../docs/DEPLOY-CLOUDWAYS.md`.

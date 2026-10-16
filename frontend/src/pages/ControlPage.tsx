@@ -208,7 +208,7 @@ export function ControlPage() {
             <div className="max-h-[340px] min-h-[160px]">
               <BidHistory bids={view.bids} />
             </div>
-            <FaultPanel faults={faults} />
+            {server.mode === 'mock' && <FaultPanel faults={faults} />}
           </div>
         </div>
       )}

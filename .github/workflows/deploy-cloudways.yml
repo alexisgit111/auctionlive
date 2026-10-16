@@ -1,6 +1,6 @@
-# Builds the frontend on every push to main and publishes the ready-to-serve
-# files to the `cloudways` branch. Cloudways "Deployment via Git" pulls that
-# branch into public_html — no Node.js needed on the server.
+# On every push to main: test the frontend and the PHP API, then publish the
+# ready-to-serve site (frontend + /api) to the `cloudways` branch.
+# Cloudways "Deployment via Git" pulls that branch into public_html.
 name: Build for Cloudways
 
 on:
@@ -18,9 +18,6 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
 
@@ -30,11 +27,38 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: pdo_sqlite, pdo_mysql
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+
+      - name: Unit tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Build (server mode)
+        working-directory: frontend
+        run: npm run build
         env:
+          VITE_BACKEND: http
           VITE_BRAND_WEBSITE: goldenlinks.co.nz
+
+      - name: Add API to the site
+        run: |
+          cp -r backend/api frontend/dist/api
+          rm -f frontend/dist/api/config.local.php
+          for f in $(find frontend/dist/api -name '*.php'); do php -l "$f" > /dev/null; done
+
+      - name: API integration tests (SQLite)
+        run: |
+          printf "<?php return ['db' => ['dsn' => 'sqlite:%s/ci.sqlite'], 'setup_key' => 'ci-key', 'secure_cookies' => false];\n" "$RUNNER_TEMP" > "$RUNNER_TEMP/config.php"
+          AUCTION_CONFIG="$RUNNER_TEMP/config.php" PHP_CLI_SERVER_WORKERS=4 php -S localhost:8080 -t frontend/dist backend/dev/router.php > "$RUNNER_TEMP/php.log" 2>&1 &
+          sleep 2
+          BASE=http://localhost:8080 SETUP_KEY=ci-key node --test backend/tests/api.test.mjs
 
       - name: Publish build to the cloudways branch
         uses: peaceiris/actions-gh-pages@v4

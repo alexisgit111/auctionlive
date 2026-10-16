@@ -13,6 +13,8 @@ export interface User {
   id: string
   name: string
   role: Role
+  email?: string
+  active?: boolean
 }
 
 export interface Property {

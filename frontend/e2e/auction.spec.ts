@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
+test.skip(process.env.E2E_BACKEND === 'http', 'prototype (mock) backend only')
+
 /**
  * Phase 1A end-to-end: Staff Console and Room Display in two windows.
  * (Phase 1A shares a browser context because the mock backend lives in
@@ -13,6 +15,15 @@ async function shot(page: Page, name: string) {
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png` })
 }
 
+/** Sign in (prototype demo accounts use password demo1234). Lands on the console. */
+async function signIn(page: Page, email = 'admin@demo.local', password = 'demo1234') {
+  await page.goto('/auction/login?next=/auction/control')
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill(password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByText('Current accepted bid')).toBeVisible()
+}
+
 async function enterBid(page: Page, amount: string) {
   const input = page.locator('#bid-input')
   await input.fill(amount)
@@ -23,7 +34,7 @@ async function enterBid(page: Page, amount: string) {
 
 test('full auction: pair display, bid, on the market, faults, sold', async ({ context }) => {
   const consolePage = await context.newPage()
-  await consolePage.goto('/auction/control')
+  await signIn(consolePage)
   await expect(consolePage.getByText('Current accepted bid')).toBeVisible()
 
   // Optional: give the demo property a photo + badge (for screenshots)
@@ -127,7 +138,7 @@ test('full auction: pair display, bid, on the market, faults, sold', async ({ co
 
 test('regression: legacy inline photo filling localStorage is migrated and bidding keeps working', async ({ context }) => {
   const page = await context.newPage()
-  await page.goto('/auction/control')
+  await signIn(page)
   await expect(page.getByText('Current accepted bid')).toBeVisible()
   // Recreate the broken state: a ~600 KB inline photo duplicated across outbox rows until storage is nearly full.
   await page.evaluate(() => {
@@ -154,7 +165,7 @@ test('regression: legacy inline photo filling localStorage is migrated and biddi
 
 test('own lapsed lease is silently re-acquired (no "control lost" dialog)', async ({ context }) => {
   const page = await context.newPage()
-  await page.goto('/auction/control')
+  await signIn(page)
   await page.getByTestId('acquire').click()
   await expect(page.getByText(/You have control/)).toBeVisible()
   // Simulate the lease lapsing (e.g. tab throttled / laptop asleep)
@@ -169,15 +180,23 @@ test('own lapsed lease is silently re-acquired (no "control lost" dialog)', asyn
   await expect(page.getByText(/You have control/)).toBeVisible()
 })
 
+test('staff pages require sign-in; wrong password is rejected', async ({ page }) => {
+  await page.goto('/auction/sessions')
+  await expect(page).toHaveURL(/\/auction\/login/)
+  await page.getByLabel('Email').fill('admin@demo.local')
+  await page.getByLabel('Password').fill('wrong-password')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByText(/incorrect/)).toBeVisible()
+})
+
 test('second operator is locked out', async ({ context }) => {
   const a = await context.newPage()
-  await a.goto('/auction/control')
+  await signIn(a)
   await a.getByTestId('acquire').click()
   await expect(a.getByText(/You have control/)).toBeVisible()
 
   const b = await context.newPage()
-  await b.goto('/auction/control')
-  await b.getByRole('combobox').first().selectOption({ label: 'Operator 2 (operator)' })
+  await signIn(b, 'operator2@demo.local')
   await expect(b.getByText(/Held by/)).toBeVisible()
   await expect(b.locator('#bid-input')).toBeDisabled()
 })

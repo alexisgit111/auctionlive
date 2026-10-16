@@ -20,7 +20,22 @@ function open(): Promise<IDBDatabase> {
   })
 }
 
+let uploader: ((dataUrl: string) => Promise<string>) | null = null
+
+/** The app decides where images go: this browser's IndexedDB (mock) or the server (http). */
+export function setImageUploader(fn: (dataUrl: string) => Promise<string>) {
+  uploader = fn
+}
+
+/** Store an image and return the reference to save on the session. */
 export async function putImage(dataUrl: string): Promise<string> {
+  const ref = uploader ? await uploader(dataUrl) : await putLocalImage(dataUrl)
+  cache.set(ref, dataUrl)
+  return ref
+}
+
+/** IndexedDB storage — this browser only (prototype mode). */
+export async function putLocalImage(dataUrl: string): Promise<string> {
   const id = uuid()
   const db = await open()
   await new Promise<void>((resolve, reject) => {

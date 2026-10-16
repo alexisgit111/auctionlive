@@ -104,9 +104,9 @@ export interface SessionInput {
 const DB_KEY = 'gl-auction-db-v1'
 
 export const DEMO_USERS: User[] = [
-  { id: 'u-op-1', name: 'Operator 1', role: 'operator' },
-  { id: 'u-op-2', name: 'Operator 2', role: 'operator' },
-  { id: 'u-admin', name: 'Auction Admin', role: 'admin' },
+  { id: 'u-op-1', name: 'Operator 1', role: 'operator', email: 'operator1@demo.local' },
+  { id: 'u-op-2', name: 'Operator 2', role: 'operator', email: 'operator2@demo.local' },
+  { id: 'u-admin', name: 'Auction Admin', role: 'admin', email: 'admin@demo.local' },
 ]
 
 export interface ServerDeps {
