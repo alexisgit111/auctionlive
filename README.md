@@ -45,7 +45,7 @@ npm run dev          # http://localhost:5173
 ### Tests
 
 ```bash
-npm test             # 75 unit tests: K/M parsing, state machine, idempotency, lease, audit, display whitelist, sync
+npm test             # 82 unit tests: K/M parsing, state machine, idempotency, lease, audit, display whitelist, sync
 npm run e2e          # Playwright: console + display windows, pairing, bids, faults, undo, sold, operator lock
 ```
 
@@ -62,6 +62,21 @@ npm run e2e          # Playwright: console + display windows, pairing, bids, fau
 | `P` | pause / resume (when amount is empty) |
 
 Double-click the room display to go fullscreen.
+
+## Phone console
+
+On a phone (screen narrower than 768 px) `/auction/control` turns into a calculator-style console:
+
+| Type | Press | Result |
+|---|---|---|
+| `1K` | **+** | preview current bid + $1,000 → press **+** again (green ✓) to send |
+| `1.25M` | **SET** | preview $1,250,000 → press **SET** again to send |
+| (nothing) | **+** | current bid + the session's default increment |
+| | **+5K** chip | preview → tap the chip again to send |
+
+Any digit cancels a preview. Status buttons (Start / Pause / On market / Sold / Passed in) sit above the keypad;
+Undo, Correct, stickers, pairing a room screen and End are in the ☰ menu. "Phone layout" / "Switch to desktop
+layout" force either layout on any device. Add the page to the home screen to run it full screen.
 
 ## Brand
 

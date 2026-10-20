@@ -177,7 +177,7 @@ function StatusBadge({ kind, value }: { kind: 'session' | 'sale'; value: string 
 }
 
 // ───────────────────────── auction controls ─────────────────────────
-type Dialog = null | 'SOLD' | 'PASSED_IN' | 'END' | 'UNDO' | 'CORRECT'
+export type Dialog = null | 'SOLD' | 'PASSED_IN' | 'END' | 'UNDO' | 'CORRECT'
 
 export function AuctionControls({
   view,
@@ -257,6 +257,28 @@ export function AuctionControls({
         </button>
       </div>
 
+      <AuctionDialogs view={view} pending={pending} run={run} dialog={dialog} setDialog={setDialog} />
+    </div>
+  )
+}
+
+/** Confirmation dialogs for Sold / Passed in / End / Undo / Correct — shared by the desktop and phone consoles. */
+export function AuctionDialogs({
+  view,
+  pending,
+  run,
+  dialog,
+  setDialog,
+}: {
+  view: StaffView
+  pending: boolean
+  run: (cmd: Command) => Promise<boolean>
+  dialog: Dialog
+  setDialog: (d: Dialog) => void
+}) {
+  const s = view.state
+  return (
+    <>
       {dialog === 'SOLD' && (
         <Modal title="Confirm SOLD" tone="ok" onClose={() => setDialog(null)}>
           <p className="text-ink-muted">The room display will show SOLD and the auction will end.</p>
@@ -320,7 +342,7 @@ export function AuctionControls({
           }}
         />
       )}
-    </div>
+    </>
   )
 }
 

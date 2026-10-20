@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { setLayoutPref, useConsoleLayout } from '../app/layout'
 import { useCloudHealth, useCommandRunner, useFaults, useNow, useOperatorLease, useSessions, useStaffView } from '../app/hooks'
 import { server } from '../app/server'
 import { useUser } from '../app/user'
 import { BidEntry } from '../components/console/BidEntry'
+import { MobileConsole } from '../components/console/MobileConsole'
 import {
   AuctionControls,
   BidHistory,
@@ -57,6 +59,7 @@ export function ControlPage() {
   const lease = useOperatorLease(sessionId, user, view?.lease)
   const runner = useCommandRunner(sessionId, user, lease.token)
   const [dialog, setDialog] = useState<null | 'SOLD' | 'PASSED_IN' | 'END' | 'UNDO' | 'CORRECT'>(null)
+  const layout = useConsoleLayout()
 
   // Offline provisional records
   const [offlineRecs, setOfflineRecs] = useState<OfflineRecord[]>([])
@@ -126,6 +129,50 @@ export function ControlPage() {
   }
 
   const apiOutdated = cloud.apiVersion !== null && cloud.apiVersion < API_VERSION
+
+  if (layout.mobile) {
+    if (!view)
+      return <div className="fixed inset-0 z-30 flex items-center justify-center bg-surface text-lg text-ink-muted">Loading…</div>
+    return (
+      <>
+        <MobileConsole
+          view={view}
+          sessions={sessions.data ?? []}
+          sessionId={sessionId}
+          onSessionChange={setSessionId}
+          cloud={cloud.status}
+          now={now}
+          lease={lease}
+          pending={runner.phase !== 'idle'}
+          canBid={canBid}
+          bidDisabledReason={bidDisabledReason}
+          controlsEnabled={controlsEnabled}
+          offline={offline}
+          offlineCount={offlineRecs.length}
+          apiOutdated={apiOutdated}
+          error={runner.error}
+          clearError={runner.clearError}
+          run={run}
+          submitBid={submitBid}
+          dialog={dialog}
+          setDialog={setDialog}
+        />
+        {lease.lost && (
+          <Modal title="Operator control lost" tone="danger" onClose={lease.dismissLost}>
+            <p className="mb-4 text-ink-muted">
+              {view.lease ? <><b className="text-navy">{view.lease.userName}</b> now has control of this auction.</> : 'Your operator control expired.'} Take control again to keep entering bids.
+            </p>
+            <div className="flex justify-end">
+              <button className="btn-primary" onClick={lease.dismissLost}>
+                OK
+              </button>
+            </div>
+          </Modal>
+        )}
+      </>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-3 p-4">
       {apiOutdated && (
@@ -154,6 +201,9 @@ export function ControlPage() {
             ))}
           </select>
         </div>
+        <button className="btn-ghost px-3 py-1.5 text-xs" onClick={() => setLayoutPref('mobile')} title="Calculator layout for phones">
+          Phone layout
+        </button>
         <div className="ml-auto">
           <HealthStrip cloud={cloud.status} view={view} now={now} hasControl={lease.hasControl} lease={view?.lease} offlineCount={offlineRecs.length} />
         </div>
