@@ -529,6 +529,41 @@ function h_device_revoke(string $id): array
     });
 }
 
+/** Active (not revoked) displays across all sessions — used to move a screen to another session. */
+function h_devices_list(): array
+{
+    require_staff();
+    $rows = q('SELECT d.*, s.data AS session_data FROM auction_devices d LEFT JOIN auction_sessions s ON s.id = d.session_id
+               WHERE d.revoked_at IS NULL ORDER BY d.approved_at DESC LIMIT 100')->fetchAll();
+    return array_map(function ($r) {
+        $s = $r['session_data'] ? jdec($r['session_data']) : [];
+        return device_row($r) + ['sessionTitle' => (string) ($s['title'] ?? ''), 'sessionAddress' => (string) ($s['property']['addressLine'] ?? '')];
+    }, $rows);
+}
+
+/** Point an already-paired screen at another session. Audited on both sessions. */
+function h_device_move(string $id): array
+{
+    $u = require_staff();
+    $to = (string) (body()['sessionId'] ?? '');
+    return tx(function () use ($u, $id, $to) {
+        $d = one('SELECT * FROM auction_devices WHERE id = ?' . for_update(), [$id]);
+        if (!$d || $d['revoked_at']) throw new ApiError('NOT_FOUND', 'Display not found or revoked', 404);
+        $from = $d['session_id'];
+        if ($from === $to) return device_row($d);
+        // lock both states in a fixed order (no deadlocks)
+        $ids = [$from, $to];
+        sort($ids);
+        $states = [];
+        foreach ($ids as $sid) $states[$sid] = load_state($sid, true);
+        $data = ['deviceId' => $id, 'label' => $d['label'], 'fromSessionId' => $from, 'toSessionId' => $to];
+        q('UPDATE auction_devices SET session_id = ?, last_acked_version = -1, last_acked_at = NULL WHERE id = ?', [$to, $id]);
+        append_meta_event($states[$from], 'DISPLAY_MOVED_OUT', $u['id'], null, $data);
+        append_meta_event($states[$to], 'DISPLAY_MOVED_IN', $u['id'], null, $data);
+        return device_row(one('SELECT * FROM auction_devices WHERE id = ?', [$id]));
+    });
+}
+
 function h_display_pairing_request(): array
 {
     // unauthenticated; tidy up expired codes
@@ -571,14 +606,36 @@ function h_display_state(): array
     return to_public_state(load_session($d['session_id']), load_state($d['session_id']));
 }
 
+/**
+ * Heartbeat. With {"wait": true} it is a long poll: the server holds the request until the
+ * auction state changes (or the display is moved/revoked), up to display_wait_ms — so the room
+ * display updates within ~0.2 s instead of waiting for the next poll. Works on any PHP host.
+ */
 function h_display_heartbeat(): array
 {
     $d = display_device();
-    $applied = (int) (body()['appliedVersion'] ?? -1);
+    $b = body();
+    $applied = (int) ($b['appliedVersion'] ?? -1);
+    $knownSession = (string) ($b['sessionId'] ?? '');
     q('UPDATE auction_devices SET last_heartbeat_at = ?, last_acked_version = CASE WHEN last_acked_version < ? THEN ? ELSE last_acked_version END WHERE id = ?',
         [iso(), $applied, $applied, $d['id']]);
-    $v = (int) one('SELECT state_version FROM auction_states WHERE session_id = ?', [$d['session_id']])['state_version'];
-    return ['serverVersion' => $v];
+    $waitMs = !empty($b['wait']) ? max(0, min(8000, (int) (cfg()['display_wait_ms'] ?? 3500))) : 0;
+    $deadline = now_ms() + $waitMs;
+    if ($waitMs > 0) {
+        @set_time_limit(30);
+        ignore_user_abort(false);
+    }
+    while (true) {
+        $r = one('SELECT d.session_id, d.revoked_at, s.state_version FROM auction_devices d
+                  JOIN auction_states s ON s.session_id = d.session_id WHERE d.id = ?', [$d['id']]);
+        if (!$r || $r['revoked_at']) throw new ApiError('UNAUTHENTICATED', 'Display credential is invalid or revoked', 401);
+        $v = (int) $r['state_version'];
+        $changed = $v !== $applied || ($knownSession !== '' && $knownSession !== $r['session_id']);
+        if ($changed || now_ms() >= $deadline || connection_aborted()) {
+            return ['serverVersion' => $v, 'sessionId' => $r['session_id']];
+        }
+        usleep(200_000);
+    }
 }
 
 function h_display_ack(): array

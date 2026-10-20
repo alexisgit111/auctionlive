@@ -84,6 +84,8 @@ export interface AuctionState {
   stateVersion: number
   eventSeq: number
   updatedAt: string
+  /** Operator hid the stickers (status circle + badge) on the room display. Missing = false. */
+  overlayHidden?: boolean
 }
 
 /** Compact state captured in audit events. */
@@ -100,6 +102,9 @@ export type EventType =
   | 'PAUSED'
   | 'RESUMED'
   | 'ON_THE_MARKET'
+  | 'OFF_THE_MARKET'
+  | 'OVERLAY_HIDDEN'
+  | 'OVERLAY_SHOWN'
   | 'SOLD'
   | 'PASSED_IN'
   | 'AUCTION_ENDED'
@@ -108,6 +113,8 @@ export type EventType =
   | 'OPERATOR_TAKEOVER'
   | 'DISPLAY_PAIRED'
   | 'DISPLAY_REVOKED'
+  | 'DISPLAY_MOVED_IN'
+  | 'DISPLAY_MOVED_OUT'
 
 export interface AuctionEvent {
   sessionId: string
@@ -128,6 +135,8 @@ export type Command =
   | { type: 'PAUSE' }
   | { type: 'RESUME' }
   | { type: 'END' }
+  | { type: 'OFF_MARKET' }
+  | { type: 'SET_OVERLAY'; hidden: boolean }
   | { type: 'ON_THE_MARKET' }
   | { type: 'SOLD' }
   | { type: 'PASSED_IN' }
@@ -171,6 +180,9 @@ export interface Pairing {
   pendingToken: string | null
 }
 
+/** A paired screen as listed for staff (any session) — never includes the token hash. */
+export type DeviceSummary = Omit<Device, 'tokenHash'> & { sessionTitle: string; sessionAddress: string }
+
 /** The ONLY shape a room display ever receives. */
 export interface PublicDisplayState {
   sessionId: string
@@ -178,6 +190,8 @@ export interface PublicDisplayState {
   sessionStatus: SessionStatus
   saleStatus: SaleStatus
   publicStatus: PublicStatus
+  /** true → the display shows no status circle and no badge sticker. */
+  overlayHidden: boolean
   currentBidCents: string | null
   currentBidDisplay: string
   property: {

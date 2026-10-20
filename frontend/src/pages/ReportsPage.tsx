@@ -2,37 +2,15 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useSessions } from '../app/hooks'
 import { server } from '../app/server'
+import { useUser } from '../app/user'
 import type { AuctionEvent, Bid } from '../engine/types'
 import { formatCents } from '../lib/money'
+import { describeEvent as describe } from '../lib/auditText'
 import { downloadFile } from '../lib/offlineStore'
 
 let names = new Map<string, string>()
 const userName = (id: string | null) => (id ? (names.get(id) ?? id) : '—')
 const ts = (iso: string) => new Date(iso).toLocaleString('en-NZ', { hour12: false })
-
-function describe(e: AuctionEvent): string {
-  const d = e.data ?? {}
-  switch (e.type) {
-    case 'BID_ACCEPTED':
-      return `Bid #${d.bidSeq} accepted: ${formatCents(String(d.amountCents))}`
-    case 'BID_UNDONE':
-      return `Bid ${formatCents(String(d.amountCents))} undone`
-    case 'BID_CORRECTED':
-      return `Bid corrected ${formatCents(String(d.fromCents))} → ${formatCents(String(d.toCents))}`
-    case 'SOLD':
-      return `SOLD at ${formatCents(String(d.soldCents))}`
-    case 'PASSED_IN':
-      return `Passed in${d.highestCents ? ` at ${formatCents(String(d.highestCents))}` : ''}`
-    case 'OPERATOR_TAKEOVER':
-      return `Control taken over from ${d.fromUserName ?? 'nobody'}`
-    case 'DISPLAY_PAIRED':
-      return `Display paired: ${d.label}`
-    case 'DISPLAY_REVOKED':
-      return `Display revoked: ${d.label}`
-    default:
-      return e.type.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase())
-  }
-}
 
 function toCsv(events: AuctionEvent[]): string {
   const head = ['seq', 'server_timestamp', 'type', 'state_version', 'operator', 'reason', 'prev_session', 'new_session', 'prev_sale', 'new_sale', 'prev_bid_cents', 'new_bid_cents', 'description']
@@ -70,6 +48,35 @@ export function ReportsPage() {
   const events = useQuery({ queryKey: ['events', sid], queryFn: () => server.staff.getEvents(sid!), enabled: !!sid, refetchInterval: 2000 })
   const bids = useQuery({ queryKey: ['bids', sid], queryFn: () => server.staff.getBids(sid!), enabled: !!sid, refetchInterval: 2000 })
   const session = sessions.data?.find((s) => s.session.id === sid)
+  const { user } = useUser()
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [pdfErr, setPdfErr] = useState<string | null>(null)
+
+  const downloadPdf = async () => {
+    if (!session || !events.data || !bids.data) return
+    setPdfBusy(true)
+    setPdfErr(null)
+    try {
+      const { buildAuctionReportPdf } = await import('../lib/reportPdf')
+      const { blob, filename } = await buildAuctionReportPdf({
+        session: session.session,
+        state: session.state,
+        bids: bids.data,
+        events: events.data,
+        userName,
+        generatedBy: user.name,
+      })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = filename
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000)
+    } catch (e) {
+      setPdfErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setPdfBusy(false)
+    }
+  }
 
   return (
     <div className="mx-auto max-w-6xl p-6 print:max-w-none print:p-0">
@@ -82,6 +89,9 @@ export function ReportsPage() {
             </option>
           ))}
         </select>
+        <button className="btn-primary text-sm" disabled={!events.data || !bids.data || !session || pdfBusy} onClick={() => void downloadPdf()}>
+          {pdfBusy ? 'Preparing PDF…' : 'Download PDF report'}
+        </button>
         <button className="btn-ghost text-sm" disabled={!events.data} onClick={() => downloadFile(`audit-${sid}.csv`, toCsv(events.data!), 'text/csv')}>
           Export CSV
         </button>
@@ -97,6 +107,7 @@ export function ReportsPage() {
         </button>
       </div>
 
+      {pdfErr && <p className="mb-3 text-sm text-bad print:hidden">Could not create the PDF: {pdfErr}</p>}
       {session && (
         <div className="panel mb-4 grid grid-cols-4 gap-4 p-4 text-sm">
           <Stat label="Property" value={`${session.session.property.addressLine}, ${session.session.property.suburb}`} />

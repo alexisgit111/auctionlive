@@ -18,6 +18,7 @@ function eng_initial_state(string $sessionId, string $now): array
         'stateVersion' => 0,
         'eventSeq' => 0,
         'updatedAt' => $now,
+        'overlayHidden' => false,
     ];
 }
 
@@ -113,6 +114,22 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
             if ($state['saleStatus'] !== 'NONE') throw eng_transition('Property is already on the market or concluded');
             $next['saleStatus'] = 'ON_THE_MARKET';
             $evType = 'ON_THE_MARKET';
+            break;
+
+        case 'OFF_MARKET':
+            if (!$running) throw eng_transition('Auction is not running');
+            if ($state['saleStatus'] !== 'ON_THE_MARKET') throw eng_transition('Property is not on the market');
+            $next['saleStatus'] = 'NONE';
+            $evType = 'OFF_THE_MARKET';
+            break;
+
+        case 'SET_OVERLAY':
+            if ($state['sessionStatus'] === 'NOT_STARTED') throw eng_transition('Auction has not started');
+            $hide = !empty($cmd['hidden']);
+            if (!empty($state['overlayHidden']) === $hide)
+                throw eng_transition($hide ? 'Stickers are already hidden' : 'Stickers are already shown');
+            $next['overlayHidden'] = $hide;
+            $evType = $hide ? 'OVERLAY_HIDDEN' : 'OVERLAY_SHOWN';
             break;
 
         case 'SOLD':
@@ -222,6 +239,11 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
             throw new ApiError('VALIDATION_FAILED', 'Unknown command', 422);
     }
 
+    // Any new status brings the stickers back so the room sees it.
+    if ($type !== 'SET_OVERLAY') {
+        $statusChanged = $next['sessionStatus'] !== $state['sessionStatus'] || $next['saleStatus'] !== $state['saleStatus'];
+        $next['overlayHidden'] = $statusChanged ? false : !empty($state['overlayHidden']);
+    }
     $next['stateVersion'] = $state['stateVersion'] + 1;
     $next['eventSeq'] = $state['eventSeq'] + 1;
     $next['updatedAt'] = $ctx['now'];
@@ -278,6 +300,7 @@ function to_public_state(array $session, array $state): array
         'sessionStatus' => $state['sessionStatus'],
         'saleStatus' => $state['saleStatus'],
         'publicStatus' => derive_public_status($state),
+        'overlayHidden' => !empty($state['overlayHidden']),
         'currentBidCents' => $state['currentBidCents'],
         'currentBidDisplay' => format_cents($state['currentBidCents']),
         'property' => [

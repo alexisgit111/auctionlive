@@ -93,6 +93,17 @@ test('full auction: pair display, bid, on the market, faults, sold', async ({ co
 
   await consolePage.getByRole('button', { name: 'On the market' }).click()
   await expect(display.getByTestId('display-status')).toHaveText(/On the market/i)
+
+  // ── Stickers can be hidden, and On the market can be undone ──
+  await expect(display.getByTestId('display-circle')).toBeVisible()
+  await consolePage.getByTestId('toggle-overlay').click()
+  await expect(display.getByTestId('display-circle')).toHaveCount(0, { timeout: 5000 })
+  await consolePage.getByTestId('toggle-overlay').click()
+  await expect(display.getByTestId('display-circle')).toBeVisible({ timeout: 5000 })
+  await consolePage.getByRole('button', { name: 'Undo on the market', exact: true }).click()
+  await expect(display.getByTestId('display-status')).not.toHaveText(/On the market/i, { timeout: 5000 })
+  await consolePage.getByRole('button', { name: 'On the market', exact: true }).click()
+  await expect(display.getByTestId('display-status')).toHaveText(/On the market/i, { timeout: 5000 })
   await enterBid(consolePage, '1275000')
   await expect(display.getByTestId('display-bid')).toHaveText('$1,275,000')
   await expect(consolePage.getByText('Synced')).toBeVisible({ timeout: 5000 })

@@ -88,15 +88,36 @@ function db(): PDO
     if ($pdo) return $pdo;
     $c = cfg()['db'] ?? null;
     if (!$c || empty($c['dsn'])) throw new ApiError('NOT_CONFIGURED', 'Database DSN missing in config.', 503);
+    $c['dsn'] = trim((string) $c['dsn']);
+    if (!preg_match('/^(mysql|sqlite):/', $c['dsn']))
+        throw new ApiError('NOT_CONFIGURED', "Config 'dsn' must start with mysql: — e.g. mysql:host=localhost;dbname=YOURDB;charset=utf8mb4", 503);
+    if (str_starts_with($c['dsn'], 'mysql:') && !preg_match('/(^|[;:])dbname=[^;]+/', $c['dsn']))
+        throw new ApiError('NOT_CONFIGURED', "Config 'dsn' has no dbname= — e.g. mysql:host=localhost;dbname=YOURDB;charset=utf8mb4", 503);
     try {
-        $pdo = new PDO($c['dsn'], $c['user'] ?? null, $c['pass'] ?? null, [
+        $pdo = new PDO($c['dsn'], isset($c['user']) ? trim((string) $c['user']) : null, $c['pass'] ?? null, [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
         ]);
     } catch (PDOException $e) {
         error_log('[auction] DB connect failed: ' . $e->getMessage());
-        throw new ApiError('SERVICE_UNAVAILABLE', 'Cannot connect to the database. Check the config file.', 503);
+        // Say *why* without revealing any credentials.
+        $raw = $e->getMessage();
+        $code = (int) ($e->errorInfo[1] ?? 0);
+        if (!$code && preg_match('/\[(\d{4})\]/', $raw, $m)) $code = (int) $m[1];
+        $placeholder = str_contains($c['dsn'] . ($c['user'] ?? '') . ($c['pass'] ?? ''), 'YOUR_');
+        $why = match (true) {
+            $placeholder => 'the config file still contains the example values (YOUR_DB_NAME / YOUR_DB_USERNAME / YOUR_DB_PASSWORD)',
+            $code === 1045 => 'MySQL rejected the username or password (error 1045)',
+            $code === 1044 => 'this MySQL user has no access to that database (error 1044)',
+            $code === 1049 => 'the database name was not found (error 1049)',
+            $code === 2002, $code === 2005 => "cannot reach the MySQL host — use host=localhost (error $code)",
+            str_contains($raw, 'could not find driver') => 'the PHP pdo_mysql extension is not enabled',
+            str_contains(strtolower($raw), 'invalid data source name') => "the 'dsn' line is not in the right format — it must look like mysql:host=localhost;dbname=YOURDB;charset=utf8mb4",
+            // PDO messages never contain the password; the username is fine to show to an admin.
+            default => 'MySQL said: ' . preg_replace('/^SQLSTATE\[\w+\]\s*/', '', $raw),
+        };
+        throw new ApiError('SERVICE_UNAVAILABLE', "Cannot connect to the database: $why.", 503);
     }
     if (is_sqlite()) {
         $pdo->exec('PRAGMA foreign_keys = ON');

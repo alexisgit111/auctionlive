@@ -15,6 +15,7 @@ import {
   OfflinePanel,
 } from '../components/console/panels'
 import { ErrorNote, Modal } from '../components/ui'
+import { API_VERSION } from '../engine/api'
 import { allowedCommands } from '../engine/engine'
 import { anyFaultActive } from '../engine/faults'
 import type { Command } from '../engine/types'
@@ -124,8 +125,16 @@ export function ControlPage() {
     )
   }
 
+  const apiOutdated = cloud.apiVersion !== null && cloud.apiVersion < API_VERSION
   return (
     <div className="flex flex-col gap-3 p-4">
+      {apiOutdated && (
+        <div data-testid="api-outdated" className="rounded-lg border-2 border-bad bg-bad/10 px-4 py-3 text-sm font-semibold text-bad">
+          The server files are out of date (server API v{cloud.apiVersion || 1}, this page needs v{API_VERSION}). Upload the whole{' '}
+          <code>api</code> folder from <code>_upload_to_public_html</code> to <code>public_html/api</code> again, purge the cache in
+          Cloudways, then reload. Room-screen switching and fast updates will not work until then.
+        </div>
+      )}
       {/* Session bar + health */}
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-3">

@@ -11,6 +11,7 @@ export type BusMessage =
   | { type: 'staff.changed'; sessionId: string }
   | { type: 'display.resync'; sessionId: string }
   | { type: 'device.revoked'; deviceId: string }
+  | { type: 'device.moved'; deviceId: string }
   | { type: 'faults.changed' }
 
 export interface Bus {

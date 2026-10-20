@@ -11,3 +11,4 @@ _to_delete/
 # server secrets — never commit
 config.local.php
 auction-live-config.php
+_upload_to_public_html/

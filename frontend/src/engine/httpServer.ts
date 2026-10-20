@@ -10,6 +10,7 @@ import {
   type Bid,
   type Command,
   type Device,
+  type DeviceSummary,
   type ErrorCode,
   type OperatorLease,
   type Pairing,
@@ -64,7 +65,7 @@ export function createHttpServer(base = ''): AppServer {
   const enc = encodeURIComponent
 
   const staff: AppServer['staff'] = {
-    health: () => call('GET', '/health'),
+    health: () => call<{ ok: boolean; serverNow: string; apiVersion?: number }>('GET', '/health'),
     listSessions: () => call<SessionSummary[]>('GET', '/sessions'),
     createSession: (input: SessionInput) => call<Session>('POST', '/sessions', input),
     updateSession: (id: string, input: SessionInput) => call<Session>('POST', `/sessions/${enc(id)}`, input),
@@ -90,6 +91,8 @@ export function createHttpServer(base = ''): AppServer {
     revokeDevice: async (deviceId: string) => {
       await call('POST', `/devices/${enc(deviceId)}/revoke`, {})
     },
+    listDevices: () => call<DeviceSummary[]>('GET', '/devices'),
+    moveDevice: (deviceId: string, sessionId: string) => call<Device>('POST', `/devices/${enc(deviceId)}/move`, { sessionId }),
     // The display polls the server every second, so a resync is just "check now".
     requestResync: async () => {},
     relayOutbox: async () => 0,
@@ -100,8 +103,14 @@ export function createHttpServer(base = ''): AppServer {
     pollPairing: (pairingId: string) =>
       call<{ status: Pairing['status']; token?: string; sessionId?: string; deviceId?: string }>('GET', `/display/pairing/${enc(pairingId)}`),
     getPublicState: (token: string | null) => call<PublicDisplayState>('GET', '/display/state', undefined, token),
-    heartbeat: (token: string | null, appliedVersion: number) =>
-      call<{ serverVersion: number }>('POST', '/display/heartbeat', { appliedVersion }, token),
+    // With wait=true the server answers as soon as anything changes (long poll, ≤ ~3.5 s).
+    heartbeat: (token: string | null, appliedVersion: number, opts?: { wait?: boolean; sessionId?: string }) =>
+      call<{ serverVersion: number; sessionId: string }>(
+        'POST',
+        '/display/heartbeat',
+        { appliedVersion, wait: !!opts?.wait, sessionId: opts?.sessionId ?? '' },
+        token,
+      ),
     ack: async (token: string | null, version: number) => {
       await call('POST', '/display/ack', { version }, token)
     },
@@ -141,5 +150,6 @@ export function createHttpServer(base = ''): AppServer {
     ensureSeed: async () => {},
     resetAll: () => {},
     displayPollMs: 1000,
+    displayLongPoll: true,
   }
 }

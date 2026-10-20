@@ -23,6 +23,9 @@ export interface AuthApi {
   changePassword(currentPassword: string, newPassword: string): Promise<void>
 }
 
+/** The PHP API this build needs (backend/api/index.php API_VERSION). Older → the console shows a warning. */
+export const API_VERSION = 3
+
 export interface AppServer {
   mode: 'mock' | 'http'
   staff: MockServer['staff']
@@ -34,4 +37,6 @@ export interface AppServer {
   resetAll(): void
   /** How often the room display checks the server, ms */
   displayPollMs: number
+  /** Display heartbeat is a long poll (server answers on change) — near-instant updates. */
+  displayLongPoll?: boolean
 }

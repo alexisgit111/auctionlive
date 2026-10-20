@@ -41,6 +41,7 @@ export function initialState(sessionId: string, now: string): AuctionState {
     stateVersion: 0,
     eventSeq: 0,
     updatedAt: now,
+    overlayHidden: false,
   }
 }
 
@@ -71,6 +72,8 @@ export function allowedCommands(s: AuctionState): Set<Command['type']> {
     if (s.saleStatus === 'NONE') a.add('ON_THE_MARKET')
   }
   if (s.sessionStatus === 'PAUSED') a.add('RESUME')
+  if ((s.sessionStatus === 'LIVE' || s.sessionStatus === 'PAUSED') && s.saleStatus === 'ON_THE_MARKET') a.add('OFF_MARKET')
+  if (s.sessionStatus !== 'NOT_STARTED') a.add('SET_OVERLAY')
   if ((s.sessionStatus === 'LIVE' || s.sessionStatus === 'PAUSED') && saleOpen(s)) {
     if (s.bidCount > 0) a.add('SOLD')
     a.add('PASSED_IN')
@@ -117,6 +120,21 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
       if (state.saleStatus !== 'NONE') throw transition('Property is already on the market or concluded')
       next.saleStatus = 'ON_THE_MARKET'
       type = 'ON_THE_MARKET'
+      break
+
+    case 'OFF_MARKET':
+      if (state.sessionStatus !== 'LIVE' && state.sessionStatus !== 'PAUSED') throw transition('Auction is not running')
+      if (state.saleStatus !== 'ON_THE_MARKET') throw transition('Property is not on the market')
+      next.saleStatus = 'NONE'
+      type = 'OFF_THE_MARKET'
+      break
+
+    case 'SET_OVERLAY':
+      if (state.sessionStatus === 'NOT_STARTED') throw transition('Auction has not started')
+      if (!!state.overlayHidden === !!cmd.hidden)
+        throw transition(cmd.hidden ? 'Stickers are already hidden' : 'Stickers are already shown')
+      next.overlayHidden = !!cmd.hidden
+      type = cmd.hidden ? 'OVERLAY_HIDDEN' : 'OVERLAY_SHOWN'
       break
 
     case 'SOLD':
@@ -224,6 +242,11 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
     }
   }
 
+  // Any new status (on the market, sold, paused…) brings the stickers back so the room sees it.
+  if (cmd.type !== 'SET_OVERLAY') {
+    next.overlayHidden =
+      next.sessionStatus !== state.sessionStatus || next.saleStatus !== state.saleStatus ? false : !!state.overlayHidden
+  }
   next.stateVersion = state.stateVersion + 1
   next.eventSeq = state.eventSeq + 1
   next.updatedAt = ctx.now

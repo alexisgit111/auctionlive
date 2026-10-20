@@ -29,6 +29,29 @@ describe('state machine', () => {
     expect(state.saleStatus).toBe('ON_THE_MARKET')
   })
 
+  it('can take a property off the market again', () => {
+    const { state, events } = run([{ type: 'START' }, { type: 'ON_THE_MARKET' }, { type: 'OFF_MARKET' }])
+    expect(state.saleStatus).toBe('NONE')
+    expect(events.map((e) => e.type)).toEqual(['AUCTION_STARTED', 'ON_THE_MARKET', 'OFF_THE_MARKET'])
+    expect(allowedCommands(state).has('ON_THE_MARKET')).toBe(true)
+    expect(() => run([{ type: 'START' }, { type: 'OFF_MARKET' }])).toThrow(/not on the market/)
+  })
+
+  it('hides and shows the display stickers, and a new status brings them back', () => {
+    const hidden = run([{ type: 'START' }, { type: 'ON_THE_MARKET' }, { type: 'SET_OVERLAY', hidden: true }])
+    expect(hidden.state.overlayHidden).toBe(true)
+    expect(hidden.events.at(-1)!.type).toBe('OVERLAY_HIDDEN')
+    expect(toPublicState({ property: { addressLine: '', suburb: '', city: '', heroImage: null }, salespeople: [] } as unknown as Session, hidden.state, 'now').overlayHidden).toBe(true)
+    // a bid keeps them hidden, a status change shows them again
+    const bid = run([{ type: 'START' }, { type: 'SET_OVERLAY', hidden: true }, { type: 'BID', amountCents: K(900) }])
+    expect(bid.state.overlayHidden).toBe(true)
+    const sold = run([{ type: 'START' }, { type: 'BID', amountCents: K(900) }, { type: 'SET_OVERLAY', hidden: true }, { type: 'SOLD' }])
+    expect(sold.state.overlayHidden).toBe(false)
+    const shown = run([{ type: 'START' }, { type: 'SET_OVERLAY', hidden: true }, { type: 'SET_OVERLAY', hidden: false }])
+    expect(shown.state.overlayHidden).toBe(false)
+    expect(() => run([{ type: 'START' }, { type: 'SET_OVERLAY', hidden: false }])).toThrow(/already shown/)
+  })
+
   it('increments state version and event seq on every mutation', () => {
     const { state, events } = run([{ type: 'START' }, { type: 'BID', amountCents: K(900) }, { type: 'PAUSE' }])
     expect(state.stateVersion).toBe(3)
@@ -170,6 +193,15 @@ describe('display sync reducer', () => {
   it('ignores a late snapshot older than what is on screen', () => {
     const s = reduceSync(initialSync, { kind: 'snapshot', state: st(7) }).next
     expect(reduceSync(s, { kind: 'snapshot', state: st(6) }).outcome).toBe('ignored-stale')
+  })
+
+  it('takes the snapshot of a new session when the screen is moved (versions restart there)', () => {
+    const at = (sessionId: string, v: number) => ({ sessionId, stateVersion: v }) as PublicDisplayState
+    const s = reduceSync(initialSync, { kind: 'snapshot', state: at('A', 40) }).next
+    expect(reduceSync(s, { kind: 'message', state: at('B', 3) }).outcome).toBe('gap')
+    const r = reduceSync(s, { kind: 'snapshot', state: at('B', 3) })
+    expect(r.outcome).toBe('applied')
+    expect(r.next.appliedVersion).toBe(3)
   })
 
   it('requires a snapshot before applying messages', () => {

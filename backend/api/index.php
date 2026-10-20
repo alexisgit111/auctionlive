@@ -7,6 +7,8 @@
  */
 declare(strict_types=1);
 const AUCTION_API = true;
+/** Bump together with API_VERSION in frontend/src/engine/api.ts whenever routes change. */
+const API_VERSION = 3;
 
 require __DIR__ . '/lib/core.php';
 require __DIR__ . '/lib/engine.php';
@@ -22,7 +24,7 @@ $path = '/' . trim((string) ($_GET['r'] ?? ''), '/');
 
 /** [method, pattern, handler, needsApiHeader] — patterns use {id} placeholders. */
 $routes = [
-    ['GET', '/health', fn() => ['ok' => true, 'serverNow' => iso()]],
+    ['GET', '/health', fn() => ['ok' => true, 'serverNow' => iso(), 'apiVersion' => API_VERSION]],
     ['GET', '/setup/status', 'h_setup_status'],
     ['POST', '/setup/admin', 'h_setup_admin'],
 
@@ -50,6 +52,8 @@ $routes = [
 
     ['POST', '/pairing/approve', 'h_pairing_approve'],
     ['POST', '/devices/{id}/revoke', 'h_device_revoke'],
+    ['GET', '/devices', 'h_devices_list'],
+    ['POST', '/devices/{id}/move', 'h_device_move'],
 
     ['POST', '/display/pairing', 'h_display_pairing_request'],
     ['GET', '/display/pairing/{id}', 'h_display_pairing_poll'],

@@ -30,6 +30,7 @@ export function toPublicState(session: Session, state: AuctionState, serverTime:
     sessionStatus: state.sessionStatus,
     saleStatus: state.saleStatus,
     publicStatus: derivePublicStatus(state),
+    overlayHidden: !!state.overlayHidden,
     currentBidCents: state.currentBidCents,
     currentBidDisplay: state.currentBidCents ? formatCents(state.currentBidCents) : '',
     property: {

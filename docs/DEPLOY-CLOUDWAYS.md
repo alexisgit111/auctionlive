@@ -49,6 +49,21 @@ Do **not** delete from `public_html`: `index.php` (serves the app on Nginx) and 
 - Same sessions visible from a second computer.
 - `https://auction.harcourts3kings.co.nz/api/lib/core.php` → empty page or 404 (never code).
 
+## Room display computer
+1. Connect the PC to the room TV (16:9), set Windows/macOS to never sleep and turn off screen savers.
+2. Open Chrome at `https://auction.harcourts3kings.co.nz/auction/pair` — a 6-character code appears.
+3. On the console (signed in, session open) → **Room display** panel → type the code → **Approve**. The screen switches to the display by itself.
+4. Fullscreen: double-click the screen or press F11. For a dedicated PC use kiosk mode:
+   `chrome.exe --kiosk https://auction.harcourts3kings.co.nz/auction/pair` (Windows shortcut / startup folder).
+5. The pairing is remembered in that browser. Reopening `/auction/pair` goes straight back to the display while the
+   session is running; after a session has ended (or the device was revoked) it shows a new code for the next session.
+6. **Next property, same screen:** open the next session in the console → Room display → *Screens on other sessions* →
+   **Show this session**. The screen switches within a second; no new code needed.
+
+Updates reach the screen almost instantly: the server holds each display request open (≤ 3.5 s) and answers the moment
+the auction changes. Each room display keeps one PHP worker busy while it waits; set `'display_wait_ms' => 0` in the
+config file to fall back to plain 1-second polling.
+
 ## Troubleshooting
 | Symptom | Cause / fix |
 |---|---|

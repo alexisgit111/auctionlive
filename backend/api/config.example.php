@@ -11,14 +11,19 @@
  */
 return [
     'db' => [
-        'dsn'  => 'tqcqbafmuq',
-        'user' => 'tqcqbafmuq',
-        'pass' => 'BBsWkZV7f5',
+        'dsn'  => 'mysql:host=localhost;dbname=YOUR_DB_NAME;charset=utf8mb4',
+        'user' => 'YOUR_DB_USERNAME',
+        'pass' => 'YOUR_DB_PASSWORD',
     ],
 
     // Long random text. Needed once, to create the first admin account on the Setup page.
-    'setup_key' => 'c9453c3f50154f2ea9296e611bc0679970b5301d15e8427980d9991952def94f',
+    'setup_key' => 'CHANGE-ME-to-a-long-random-phrase',
 
     // Session cookie only over HTTPS (keep true in production).
     'secure_cookies' => true,
+
+    // Room display "instant push": the server holds each display request for up to this long and
+    // answers the moment the auction changes. Each room display uses one PHP worker while waiting.
+    // 0 = plain 1-second polling.
+    'display_wait_ms' => 3500,
 ];

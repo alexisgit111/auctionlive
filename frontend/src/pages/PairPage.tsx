@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { saveCredential } from '../app/displaySync'
+import { loadCredential, saveCredential } from '../app/displaySync'
 import { server } from '../app/server'
 import { BrandLogo } from '../components/brand'
 import { StageFrame } from './DisplayPage'
@@ -11,6 +11,28 @@ export function PairPage() {
   const [req, setReq] = useState<{ pairingId: string; code: string; expiresAt: string } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now())
+
+  // Kiosk-friendly: a screen that is already paired goes straight back to its display
+  // (e.g. after a reboot with Chrome opening /auction/pair). Revoked → the display page clears it.
+  useEffect(() => {
+    const cred = loadCredential()
+    if (!cred || new URLSearchParams(window.location.search).has('new')) return
+    let cancelled = false
+    server.display
+      .getPublicState(cred.token)
+      .then((st) => {
+        if (cancelled) return
+        // A finished auction needs a new pairing for the next session.
+        if (st.sessionStatus === 'ENDED') saveCredential(null)
+        else nav(`/auction/display/${cred.sessionId}`, { replace: true })
+      })
+      .catch(() => {
+        /* revoked or offline — stay here and pair */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [nav])
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 500)

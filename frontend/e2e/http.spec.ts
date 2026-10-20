@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { expect, test, type Browser, type Page } from '@playwright/test'
 
 /**
@@ -103,6 +104,17 @@ test('first-time setup, staff accounts, shared sessions, two-computer auction', 
   await expect(room.getByTestId('display-bid')).toHaveText('$1,125,000', { timeout: 5000 })
   await expect(room.getByTestId('display-status')).toHaveText(/On the market/i)
   await expect(room.getByTestId('display-salespeople')).toContainText('Jane Smith')
+
+  // ── Stickers can be hidden, and On the market can be undone ──
+  await expect(room.getByTestId('display-circle')).toBeVisible()
+  await console_.getByTestId('toggle-overlay').click()
+  await expect(room.getByTestId('display-circle')).toHaveCount(0, { timeout: 5000 })
+  await console_.getByTestId('toggle-overlay').click()
+  await expect(room.getByTestId('display-circle')).toBeVisible({ timeout: 5000 })
+  await console_.getByRole('button', { name: 'Undo on the market', exact: true }).click()
+  await expect(room.getByTestId('display-status')).not.toHaveText(/On the market/i, { timeout: 5000 })
+  await console_.getByRole('button', { name: 'On the market', exact: true }).click()
+  await expect(room.getByTestId('display-status')).toHaveText(/On the market/i, { timeout: 5000 })
   await expect(console_.getByText('Synced')).toBeVisible({ timeout: 8000 })
   await shot(console_, 'h03-console')
   await shot(room, 'h04-display')
@@ -111,6 +123,47 @@ test('first-time setup, staff accounts, shared sessions, two-computer auction', 
   await office.getByRole('link', { name: 'Reports' }).click()
   await expect(office.getByText('Bid #3 accepted: $1,125,000')).toBeVisible()
   await expect(office.getByText('Vicky Operator').first()).toBeVisible()
+
+  // ── PDF report ──
+  const [dl] = await Promise.all([office.waitForEvent('download'), office.getByRole('button', { name: 'Download PDF report' }).click()])
+  expect(dl.suggestedFilename()).toMatch(/^Auction report - 85 Rosier Road - \d{4}-\d{2}-\d{2}\.pdf$/)
+  const pdf = readFileSync((await dl.path())!)
+  expect(pdf.subarray(0, 5).toString()).toBe('%PDF-')
+  if (SHOTS) await dl.saveAs(`${SHOTS}/report.pdf`)
+
+  // ── One screen, next session: move the room display without re-pairing ──
+  await office.getByRole('link', { name: 'Sessions' }).click()
+  await office.getByRole('button', { name: 'New session' }).click()
+  await office.getByPlaceholder('12 Example Road').fill('7 Second Street')
+  await office.getByLabel('Suburb').fill('Titirangi')
+  await office.getByRole('button', { name: 'Save session' }).click()
+  await expect(office.getByText('7 Second Street, Titirangi')).toBeVisible()
+  await console_.reload()
+  await console_.locator('#session').selectOption({ label: '7 Second Street, Titirangi — NOT STARTED' })
+  const others = console_.getByTestId('other-screens')
+  await expect(others).toContainText('85 Rosier Road', { timeout: 10_000 })
+  await others.getByRole('button', { name: 'Show this session' }).click()
+  await expect(room.locator('h1')).toContainText('7 Second Street', { timeout: 6000 })
+  await expect(room).toHaveURL(/\/auction\/display\//)
+  await expect(room.getByTestId('display-status')).toHaveText(/starting soon/i)
+  await expect(console_.getByText('Auction room screen')).toBeVisible()
+  await shot(room, 'h06-display-moved')
+  await expect(console_.getByText('Synced')).toBeVisible({ timeout: 8000 })
+  await shot(console_, 'h06b-console-screens')
+
+  // ── …and back again with the "Move to…" menu on the paired screen ──
+  await console_.getByLabel('Move screen to session').selectOption({ index: 1 })
+  await expect(room.locator('h1')).toContainText('85 Rosier Road', { timeout: 6000 })
+  await expect(room.getByTestId('display-bid')).toHaveText('$1,125,000')
+
+  // ── An idle screen must not flood the server (≤ ~1 request/second, even if the server answers at once) ──
+  let beats = 0
+  room.on('request', (r) => {
+    if (r.url().includes('display%2Fheartbeat')) beats++
+  })
+  await room.waitForTimeout(4000)
+  expect(beats).toBeLessThanOrEqual(5)
+  await expect(console_.getByTestId('api-outdated')).toHaveCount(0)
 
   // ── Sign out protects the console ──
   await console_.getByTestId('user-menu').click()

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { loadCredential, saveCredential, useDisplaySync } from '../app/displaySync'
 import { BrandLogo, PersonPhoto, PropertyImage } from '../components/brand'
 import { BathIcon, BedIcon, FloorIcon, GarageIcon, LandIcon } from '../components/display/icons'
@@ -15,15 +15,29 @@ const FOOTER_TEXT = (import.meta.env.VITE_BRAND_WEBSITE as string | undefined) ?
 
 export function DisplayPage() {
   const { sessionId } = useParams()
-  const [cred] = useState(loadCredential)
-  const valid = cred && cred.sessionId === sessionId ? cred : null
-  const { state, overlay, unpaired } = useDisplaySync(valid)
+  const nav = useNavigate()
+  const [cred, setCred] = useState(loadCredential)
+  const { state, overlay, unpaired } = useDisplaySync(cred)
 
   useEffect(() => {
     if (unpaired) saveCredential(null)
   }, [unpaired])
 
-  if (!valid || unpaired) return <NotPaired revoked={unpaired} />
+  // Staff moved this screen to another session → follow it.
+  useEffect(() => {
+    if (cred && state && state.sessionId !== cred.sessionId) {
+      const next = { ...cred, sessionId: state.sessionId }
+      saveCredential(next)
+      setCred(next)
+    }
+  }, [cred, state])
+
+  // Keep the address bar on the session this screen is paired with.
+  useEffect(() => {
+    if (cred && sessionId !== cred.sessionId) nav(`/auction/display/${cred.sessionId}`, { replace: true })
+  }, [cred, sessionId, nav])
+
+  if (!cred || unpaired) return <NotPaired revoked={unpaired} />
   return <Stage state={state} overlay={overlay} />
 }
 
@@ -107,7 +121,8 @@ function Stage({ state, overlay }: { state: PublicDisplayState | null; overlay: 
 
   const p = state?.property
   const status = state ? STATUS_LINE[state.publicStatus] : null
-  const circle = state ? CIRCLE[state.publicStatus] : undefined
+  const stickers = !state?.overlayHidden
+  const circle = state && stickers ? CIRCLE[state.publicStatus] : undefined
   const bid = state?.currentBidDisplay ?? ''
   const bidSize = bid.length > 11 ? 'text-[4.4cqw]' : bid.length > 10 ? 'text-[4.9cqw]' : 'text-[5.4cqw]'
   const label =
@@ -147,7 +162,7 @@ function Stage({ state, overlay }: { state: PublicDisplayState | null; overlay: 
       {/* ── Property photo ── */}
       <div className="absolute left-[0.5cqw] top-[11.4cqw] h-[40.6cqw] w-[66cqw] overflow-hidden">
         <PropertyImage src={p?.heroImage} />
-        {p?.badge && (
+        {stickers && p?.badge && (
           <div className="absolute left-[1cqw] top-[1cqw] flex h-[9cqw] w-[9cqw] items-center justify-center rounded-full bg-white p-[1cqw] text-center text-[1.45cqw] font-bold leading-[1.1] text-navy shadow-[0_0.3cqw_1.2cqw_rgba(0,29,74,0.18)]">
             {p.badge}
           </div>
@@ -256,6 +271,12 @@ function Salespeople({ people }: { people: Salesperson[] }) {
 }
 
 function NotPaired({ revoked }: { revoked: boolean }) {
+  // Unattended room PCs: show a new pairing code by themselves after a short pause.
+  const nav = useNavigate()
+  useEffect(() => {
+    const t = setTimeout(() => nav('/auction/pair', { replace: true }), 15_000)
+    return () => clearTimeout(t)
+  }, [nav])
   return (
     <StageFrame>
       <div className="flex h-full flex-col items-center justify-center gap-[2cqw]">
@@ -263,7 +284,7 @@ function NotPaired({ revoked }: { revoked: boolean }) {
           <BrandLogo className="h-full" />
         </div>
         <div className="text-[3cqw] font-bold text-navy">{revoked ? 'This display has been unpaired' : 'Display not paired'}</div>
-        <div className="text-[1.6cqw] text-ink-muted">Ask staff to pair this screen with the auction session.</div>
+        <div className="text-[1.6cqw] text-ink-muted">Ask staff to pair this screen with the auction session. A pairing code appears automatically.</div>
         <Link to="/auction/pair" className="btn-primary px-[3cqw] py-[1cqw] text-[1.6cqw]">
           Start pairing
         </Link>

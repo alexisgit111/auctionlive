@@ -79,8 +79,12 @@ A retry with the same key and same body returns the stored `201` response. Same 
 | POST | `/pairing/request` | unauthenticated, rate-limited → `{code, pairing_id, expires_at}` |
 | GET | `/pairing/{pairing_id}` | poll → `PENDING` / `APPROVED {display_token, session_id}` (token returned once) / `EXPIRED` |
 | GET | `/display/state` | public snapshot |
-| POST | `/display/heartbeat` | `{applied_version}` every 2 s |
+| POST | `/display/heartbeat` | `{appliedVersion, sessionId, wait}` — with `wait: true` a long poll: returns `{serverVersion, sessionId}` as soon as the version or the screen's session changes, else after `display_wait_ms` (3.5 s) |
 | POST | `/display/ack` | `{applied_version}` after render |
+
+Staff device routes (PHP API): `GET /devices` (active screens on all sessions, with `sessionTitle` / `sessionAddress`),
+`POST /devices/{id}/move {sessionId}` (point a paired screen at another session; audited as `DISPLAY_MOVED_OUT` / `DISPLAY_MOVED_IN`),
+`POST /devices/{id}/revoke`.
 
 ### Public state payload (the **only** shape a display ever receives)
 

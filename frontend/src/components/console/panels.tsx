@@ -1,12 +1,13 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import type { CloudStatus } from '../../app/hooks'
+import { useSessions, type CloudStatus } from '../../app/hooks'
 import { bus, kv, server } from '../../app/server'
 import { useUser } from '../../app/user'
 import { allowedCommands } from '../../engine/engine'
 import { DEFAULT_FAULTS, writeFaults, type Faults } from '../../engine/faults'
 import type { StaffView } from '../../engine/mockServer'
 import { derivePublicStatus } from '../../engine/publicState'
-import type { Bid, Command, Device, OperatorLease } from '../../engine/types'
+import type { Bid, Command, Device, DeviceSummary, OperatorLease } from '../../engine/types'
 import { formatCents, parseBidInput } from '../../lib/money'
 import { downloadFile, type OfflineRecord } from '../../lib/offlineStore'
 import { Chip, ErrorNote, Kbd, Modal } from '../ui'
@@ -27,7 +28,8 @@ const time = (iso: string) => new Date(iso).toLocaleTimeString('en-NZ', { hour12
 // ───────────────────────── device health ─────────────────────────
 export function deviceHealth(d: Device, stateVersion: number, now: number) {
   const hb = d.lastHeartbeatAt ? Date.parse(d.lastHeartbeatAt) : 0
-  const connected = !d.revokedAt && now - hb <= 5000
+  // long-poll heartbeats arrive every ≤ 3.5 s
+  const connected = !d.revokedAt && now - hb <= 8000
   const synced = d.lastAckedVersion === stateVersion
   return { connected, synced }
 }
@@ -212,11 +214,21 @@ export function AuctionControls({
             Pause <Kbd>P</Kbd>
           </button>
         )}
-        {s.sessionStatus !== 'NOT_STARTED' && (
-          <button className="btn-navy py-3" disabled={!can('ON_THE_MARKET')} onClick={() => void run({ type: 'ON_THE_MARKET' })}>
-            On the market
-          </button>
-        )}
+        {s.sessionStatus !== 'NOT_STARTED' &&
+          (s.saleStatus === 'ON_THE_MARKET' ? (
+            <button
+              className="btn border border-navy/40 py-3 text-navy hover:bg-navy/5"
+              disabled={!can('OFF_MARKET')}
+              onClick={() => void run({ type: 'OFF_MARKET' })}
+              title="Take the property off the market (removes the On the market sticker)"
+            >
+              Undo on the market
+            </button>
+          ) : (
+            <button className="btn-navy py-3" disabled={!can('ON_THE_MARKET')} onClick={() => void run({ type: 'ON_THE_MARKET' })}>
+              On the market
+            </button>
+          ))}
         <button className="btn-ok py-3" disabled={!can('SOLD')} onClick={() => setDialog('SOLD')}>
           Sold…
         </button>
@@ -229,7 +241,18 @@ export function AuctionControls({
         <button className="btn-ghost" disabled={!can('CORRECT')} onClick={() => setDialog('CORRECT')}>
           Correct last bid…
         </button>
-        <button className="btn-ghost col-span-2 text-ink-muted" disabled={!can('END')} onClick={() => setDialog('END')}>
+        {s.sessionStatus !== 'NOT_STARTED' && (
+          <button
+            data-testid="toggle-overlay"
+            className={`btn col-span-2 border ${s.overlayHidden ? 'border-brand bg-brand/10 text-navy' : 'border-line text-navy hover:bg-navy/5'}`}
+            disabled={!can('SET_OVERLAY')}
+            onClick={() => void run({ type: 'SET_OVERLAY', hidden: !s.overlayHidden })}
+            title="Hide or show every sticker on the room display (status circle and photo badge)"
+          >
+            {s.overlayHidden ? 'Show room display stickers' : 'Hide all room display stickers'}
+          </button>
+        )}
+                <button className="btn-ghost col-span-2 text-ink-muted" disabled={!can('END')} onClick={() => setDialog('END')}>
           End auction without result…
         </button>
       </div>
@@ -476,7 +499,12 @@ export function DisplayPanel({ view, now, cloudOk }: { view: StaffView; now: num
           </button>
         </div>
       </div>
-      {devices.length === 0 && <p className="mb-3 text-sm text-ink-muted">No display paired with this session.</p>}
+      {devices.length === 0 && (
+        <>
+          <p className="mb-2 text-sm text-ink-muted">No screen is showing this session yet.</p>
+          <OtherScreens sessionId={view.session.id} now={now} cloudOk={cloudOk} prominent />
+        </>
+      )}
       <ul className="mb-3 space-y-2">
         {devices.map((d) => {
           const h = deviceHealth(d, view.state.stateVersion, now)
@@ -488,8 +516,9 @@ export function DisplayPanel({ view, now, cloudOk }: { view: StaffView; now: num
               <span className={h.synced ? 'text-ink-muted' : 'text-warn'}>
                 v{Math.max(d.lastAckedVersion, 0)}/{view.state.stateVersion}
               </span>
+              <MoveToSession deviceId={d.id} currentSessionId={view.session.id} disabled={!cloudOk} />
               <button
-                className="ml-auto text-xs font-semibold text-bad underline disabled:opacity-40"
+                className="text-xs font-semibold text-bad underline disabled:opacity-40"
                 disabled={!cloudOk}
                 onClick={() => void server.staff.revokeDevice(d.id, user)}
               >
@@ -514,6 +543,121 @@ export function DisplayPanel({ view, now, cloudOk }: { view: StaffView; now: num
         </button>
       </div>
       {msg && <p className={`mt-2 text-sm ${msg.ok ? 'text-ok' : 'text-bad'}`}>{msg.text}</p>}
+      {devices.length > 0 && <OtherScreens sessionId={view.session.id} now={now} cloudOk={cloudOk} />}
+      {devices.length === 0 && (
+        <p className="mt-2 text-xs text-ink-faint">New screen: open /auction/pair on it, then enter its code above.</p>
+      )}
+    </div>
+  )
+}
+
+/** Send a screen of this session to another session (e.g. the next property). */
+function MoveToSession({ deviceId, currentSessionId, disabled }: { deviceId: string; currentSessionId: string; disabled: boolean }) {
+  const { user } = useUser()
+  const qc = useQueryClient()
+  const sessions = useSessions()
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const others = (sessions.data ?? []).filter((x) => x.session.id !== currentSessionId)
+  if (others.length === 0) return <span className="ml-auto" />
+  return (
+    <>
+    {err && <span className="ml-auto text-xs text-bad">{err}</span>}
+    <select
+      className={`${err ? '' : 'ml-auto '}max-w-[11rem] rounded-md border border-line bg-surface-2 px-2 py-1 text-xs font-semibold text-navy`}
+      aria-label="Move screen to session"
+      value=""
+      disabled={disabled || busy}
+      onChange={async (e) => {
+        const to = e.target.value
+        if (!to) return
+        setBusy(true)
+        setErr(null)
+        try {
+          await server.staff.moveDevice(deviceId, to, user)
+          await qc.invalidateQueries({ queryKey: ['staff', currentSessionId] })
+          await qc.invalidateQueries({ queryKey: ['devices'] })
+        } catch (err) {
+          setErr(err instanceof Error ? err.message : String(err))
+        } finally {
+          setBusy(false)
+        }
+      }}
+    >
+      <option value="">{busy ? 'Moving…' : 'Move to…'}</option>
+      {others.map(({ session: x, state }) => (
+        <option key={x.id} value={x.id}>
+          {x.property.addressLine}
+          {x.property.suburb ? `, ${x.property.suburb}` : ''} — {state.sessionStatus.replace('_', ' ').toLowerCase()}
+        </option>
+      ))}
+    </select>
+    </>
+  )
+}
+
+/** Screens paired with other sessions — move one here without re-pairing. */
+function OtherScreens({ sessionId, now, cloudOk, prominent = false }: { sessionId: string; now: number; cloudOk: boolean; prominent?: boolean }) {
+  const { user } = useUser()
+  const qc = useQueryClient()
+  const [busy, setBusy] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const q = useQuery({ queryKey: ['devices'], queryFn: () => server.staff.listDevices(), refetchInterval: 5000 })
+  const DAY = 86_400_000
+  const others = (q.data ?? [])
+    .filter((d) => d.sessionId !== sessionId)
+    .map((d) => ({ d, online: !!d.lastHeartbeatAt && now - Date.parse(d.lastHeartbeatAt) <= 8000 }))
+    // only screens seen in the last day (old ones stay revocable from their own session)
+    .filter(({ d }) => d.lastHeartbeatAt && now - Date.parse(d.lastHeartbeatAt) < DAY)
+    .sort((a, b) => Number(b.online) - Number(a.online))
+  if (q.isError)
+    return (
+      <p className="mt-3 text-sm text-bad">
+        Cannot list the room screens — the server&apos;s <code>api</code> folder is probably out of date. ({q.error instanceof Error ? q.error.message : ''})
+      </p>
+    )
+  if (others.length === 0) return null
+
+  const move = async (d: DeviceSummary) => {
+    setBusy(d.id)
+    setErr(null)
+    try {
+      await server.staff.moveDevice(d.id, sessionId, user)
+      await qc.invalidateQueries({ queryKey: ['devices'] })
+      await qc.invalidateQueries({ queryKey: ['staff', sessionId] })
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className={prominent ? 'mb-3 rounded-lg border-2 border-brand/40 bg-brand/5 p-3' : 'mt-4 border-t border-line pt-3'} data-testid="other-screens">
+      <div className="mb-2 text-xs font-bold uppercase tracking-widest text-ink-faint">
+        {prominent ? 'Switch a room screen to this session' : 'Screens on other sessions'}
+      </div>
+      <ul className="space-y-2">
+        {others.map(({ d, online }) => (
+          <li key={d.id} className="flex items-center gap-3 rounded-md border border-line px-3 py-2 text-sm">
+            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${online ? 'bg-ok' : 'bg-ink-faint'}`} aria-hidden />
+            <div className="min-w-0">
+              <div className="font-semibold text-navy">{d.label}</div>
+              <div className="truncate text-xs text-ink-muted">
+                {online ? 'Showing' : 'Offline · last'}: {d.sessionAddress || d.sessionTitle || 'another session'}
+              </div>
+            </div>
+            <button
+              className="btn-primary ml-auto shrink-0 px-3 py-1 text-xs"
+              disabled={!cloudOk || busy !== null}
+              onClick={() => void move(d)}
+            >
+              {busy === d.id ? 'Moving…' : 'Show this session'}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {err && <p className="mt-2 text-sm text-bad">{err}</p>}
     </div>
   )
 }

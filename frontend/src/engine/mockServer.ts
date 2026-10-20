@@ -23,6 +23,7 @@ import {
   type Bid,
   type Command,
   type Device,
+  type DeviceSummary,
   type EventType,
   type OperatorLease,
   type Pairing,
@@ -375,7 +376,7 @@ export function createMockServer(deps: ServerDeps) {
   const staff = {
     async health() {
       await staffNet()
-      return { ok: true, serverNow: iso() }
+      return { ok: true, serverNow: iso(), apiVersion: 3 }
     },
 
     async listSessions(): Promise<SessionSummary[]> {
@@ -670,6 +671,41 @@ export function createMockServer(deps: ServerDeps) {
       notifyStaff(sid)
     },
 
+    async listDevices(): Promise<DeviceSummary[]> {
+      await staffNet()
+      const db = read()
+      return Object.values(db.devices)
+        .filter((d) => !d.revokedAt)
+        .sort((a, b) => b.approvedAt.localeCompare(a.approvedAt))
+        .map(({ tokenHash: _t, ...d }) => ({
+          ...d,
+          sessionTitle: db.sessions[d.sessionId]?.title ?? '',
+          sessionAddress: db.sessions[d.sessionId]?.property.addressLine ?? '',
+        }))
+    },
+
+    async moveDevice(deviceId: string, toSessionId: string, user: User): Promise<Device> {
+      await staffNet()
+      const r = await tx((db) => {
+        requireSession(db, toSessionId)
+        const d = db.devices[deviceId]
+        if (!d || d.revokedAt) throw new ApiError('NOT_FOUND', 'Display not found or revoked', 404)
+        const from = d.sessionId
+        if (from === toSessionId) return { d, from }
+        const data = { deviceId, label: d.label, fromSessionId: from, toSessionId }
+        d.sessionId = toSessionId
+        d.lastAckedVersion = -1
+        d.lastAckedAt = null
+        appendEvent(db, from, 'DISPLAY_MOVED_OUT', user.id, { data })
+        appendEvent(db, toSessionId, 'DISPLAY_MOVED_IN', user.id, { data })
+        return { d: { ...d }, from }
+      })
+      bus.publish({ type: 'device.moved', deviceId })
+      notifyStaff(r.from)
+      notifyStaff(toSessionId)
+      return r.d
+    },
+
     async requestResync(sessionId: string) {
       await staffNet()
       await tx((db) => enqueueOutbox(db, sessionId))
@@ -736,15 +772,18 @@ export function createMockServer(deps: ServerDeps) {
       return toPublicState(db.sessions[d.sessionId], db.states[d.sessionId], iso())
     },
 
-    async heartbeat(token: string | null, appliedVersion: number): Promise<{ serverVersion: number }> {
+    async heartbeat(
+      token: string | null,
+      appliedVersion: number,
+      _opts?: { wait?: boolean; sessionId?: string },
+    ): Promise<{ serverVersion: number; sessionId: string }> {
       await displayNet()
-      const v = await tx(async (db) => {
+      return tx(async (db) => {
         const d = await authDevice(db, token)
         db.devices[d.id].lastHeartbeatAt = iso()
         db.devices[d.id].lastAckedVersion = Math.max(db.devices[d.id].lastAckedVersion, appliedVersion)
-        return db.states[d.sessionId].stateVersion
+        return { serverVersion: db.states[d.sessionId].stateVersion, sessionId: d.sessionId }
       })
-      return { serverVersion: v }
     },
 
     async ack(token: string | null, version: number) {

@@ -112,7 +112,8 @@ export function useDisplaySync(cred: DisplayCredential | null) {
     if (!cred) return
     return bus.subscribe((m) => {
       if (readFaults(kv).displayOffline) return // socket is down
-      if (m.type === 'state.updated' && m.sessionId === cred.sessionId) {
+      if (m.type === 'device.moved' && m.deviceId === cred.deviceId) void snapshot()
+      else if (m.type === 'state.updated' && m.sessionId === cred.sessionId) {
         const outcome = apply('message', m.payload)
         if (outcome === 'gap') void snapshot()
         else lastOk.current = Date.now()
@@ -121,22 +122,60 @@ export function useDisplaySync(cred: DisplayCredential | null) {
     })
   }, [cred, apply, snapshot])
 
-  // Heartbeat + server-version check (also our HTTP polling fallback)
+  // Heartbeat + server-version check (also our HTTP fallback). On the PHP server the heartbeat
+  // is a long poll: it returns the moment the auction changes, so updates are near-instant.
   useEffect(() => {
     if (!token) return
-    const beat = async () => {
+    let stopped = false
+    /** Returns true when the screen had to catch up (so the next long poll can start at once). */
+    const beat = async (wait: boolean): Promise<boolean> => {
       try {
-        const { serverVersion } = await server.display.heartbeat(token, syncRef.current.appliedVersion)
+        const applied = syncRef.current.applied
+        const r = await server.display.heartbeat(token, syncRef.current.appliedVersion, {
+          wait,
+          sessionId: applied?.sessionId,
+        })
+        if (stopped) return false
         markOk()
-        if (serverVersion > syncRef.current.appliedVersion) void snapshot()
+        if (r.serverVersion > syncRef.current.appliedVersion || (applied && r.sessionId && r.sessionId !== applied.sessionId)) {
+          await snapshot()
+          return true
+        }
+        return false
       } catch (e) {
-        if (e instanceof ApiError && e.code === 'UNAUTHENTICATED') return setUnpaired(true)
+        if (stopped) return false
+        if (e instanceof ApiError && e.code === 'UNAUTHENTICATED') {
+          setUnpaired(true)
+          return false
+        }
         failing.current = true
         scheduleReconnect()
+        // don't spin while the network is down
+        if (wait) await new Promise((res) => setTimeout(res, Math.min(500 * 2 ** backoff.current, 5000)))
+        return false
       }
     }
-    void beat()
-    return setWorkerInterval(() => void beat(), HEARTBEAT_MS)
+    if (server.displayLongPoll) {
+      void (async () => {
+        while (!stopped) {
+          const t0 = Date.now()
+          const changed = await beat(true)
+          // A server that answers at once without a change (older API, cache, proxy) must not be
+          // hammered: never ask more than once a second unless something actually changed.
+          const wait = changed ? 0 : 1000 - (Date.now() - t0)
+          if (wait > 0 && !stopped) await new Promise((res) => setTimeout(res, wait))
+        }
+      })()
+      return () => {
+        stopped = true
+      }
+    }
+    void beat(false)
+    const stop = setWorkerInterval(() => void beat(false), HEARTBEAT_MS)
+    return () => {
+      stopped = true
+      stop()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, snapshot])
 

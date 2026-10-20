@@ -152,6 +152,22 @@ describe('bidding', () => {
     const bids = (await admin('GET', `/sessions/${sid}/bids`)).json
     assert.equal(bids.find((b) => b.amountCents === K(1200)).status, 'REVERSED')
   })
+
+  it('on the market can be undone; stickers can be hidden and come back on a new status', async () => {
+    assert.equal((await exec(admin, { type: 'ON_THE_MARKET' })).json.state.saleStatus, 'ON_THE_MARKET')
+    const off = await exec(admin, { type: 'OFF_MARKET' })
+    assert.equal(off.status, 200, JSON.stringify(off.json))
+    assert.equal(off.json.state.saleStatus, 'NONE')
+    assert.equal((await exec(admin, { type: 'OFF_MARKET' })).status, 409)
+    const hide = await exec(admin, { type: 'SET_OVERLAY', hidden: true })
+    assert.equal(hide.status, 200)
+    assert.equal(hide.json.state.overlayHidden, true)
+    assert.equal((await exec(admin, { type: 'SET_OVERLAY', hidden: true })).status, 409)
+    const otm = await exec(admin, { type: 'ON_THE_MARKET' })
+    assert.equal(otm.json.state.overlayHidden, false)
+    const types = (await admin('GET', `/sessions/${sid}/events`)).json.map((e) => e.type)
+    for (const t of ['OFF_THE_MARKET', 'OVERLAY_HIDDEN']) assert.ok(types.includes(t), t)
+  })
 })
 
 describe('room display', () => {
@@ -182,8 +198,37 @@ describe('room display', () => {
     // display token cannot call staff routes
     assert.equal((await disp('GET', '/sessions', undefined, H)).status, 401)
 
+    // long poll: answers immediately when behind, holds while up to date, wakes on a change
+    const t0 = Date.now()
+    const held = disp('POST', '/display/heartbeat', { appliedVersion: hb.json.serverVersion, wait: true, sessionId: sid }, H)
+    await new Promise((r) => setTimeout(r, 500))
+    await exec(admin, { type: 'SET_OVERLAY', hidden: true })
+    const woke = await held
+    assert.equal(woke.json.serverVersion, hb.json.serverVersion + 1)
+    assert.ok(Date.now() - t0 < 2500, `long poll should wake on change (took ${Date.now() - t0} ms)`)
+    const t1 = Date.now()
+    const idle = await disp('POST', '/display/heartbeat', { appliedVersion: woke.json.serverVersion, wait: true, sessionId: sid }, H)
+    assert.equal(idle.status, 200)
+    assert.ok(Date.now() - t1 >= 1000, 'idle long poll should be held')
+
+    // move the screen to another session — no re-pairing, audited on both
+    const s2 = await admin('POST', '/sessions', { title: 'Second', scheduledAt: new Date().toISOString(), salespeople: [], defaultIncrementCents: K(10), property: { addressLine: '2 Next Street', suburb: 'Glen Eden', city: 'Auckland', heroImage: null } })
+    assert.equal(s2.status, 200, JSON.stringify(s2.json))
+    const list = (await op1('GET', '/devices')).json
+    assert.ok(list.some((d) => d.id === dev.json.id && d.sessionAddress === '1 Test Road' && !('tokenHash' in d)))
+    assert.equal((await anon('POST', `/devices/${dev.json.id}/move`, { sessionId: s2.json.id })).status, 401)
+    const mv = await op1('POST', `/devices/${dev.json.id}/move`, { sessionId: s2.json.id })
+    assert.equal(mv.status, 200, JSON.stringify(mv.json))
+    const moved = await disp('POST', '/display/heartbeat', { appliedVersion: woke.json.serverVersion, wait: true, sessionId: sid }, H)
+    assert.equal(moved.json.sessionId, s2.json.id)
+    assert.equal((await disp('GET', '/display/state', undefined, H)).json.property.addressLine, '2 Next Street')
+    const t2 = (await admin('GET', `/sessions/${s2.json.id}/events`)).json.map((e) => e.type)
+    assert.ok(t2.includes('DISPLAY_MOVED_IN'))
+    assert.ok((await admin('GET', `/sessions/${sid}/events`)).json.some((e) => e.type === 'DISPLAY_MOVED_OUT'))
+
     await admin('POST', `/devices/${dev.json.id}/revoke`, {})
     assert.equal((await disp('GET', '/display/state', undefined, H)).status, 401)
+    assert.equal((await op1('POST', `/devices/${dev.json.id}/move`, { sessionId: sid })).status, 404)
   })
 })
 

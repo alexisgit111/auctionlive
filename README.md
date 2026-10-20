@@ -40,13 +40,12 @@ npm run dev          # http://localhost:5173
 
 > Phase 1A uses an in-browser mock of the authoritative backend (`src/engine/mockServer.ts`), stored in the browser's
 > local storage and synchronised between windows with BroadcastChannel. The console and display must therefore be windows
-> of the **same browser on the same computer** for now. Phase 1B/1C replaces the mock with the Laravel API + WebSockets,
-> after which they run on separate computers. Nothing connects to any Golden Links system.
+> of the **same browser on the same computer** for now. Server mode (`VITE_BACKEND=http`, the PHP API) runs them on separate computers. Nothing connects to any Golden Links system.
 
 ### Tests
 
 ```bash
-npm test             # 69 unit tests: K/M parsing, state machine, idempotency, lease, audit, display whitelist, sync
+npm test             # 75 unit tests: K/M parsing, state machine, idempotency, lease, audit, display whitelist, sync
 npm run e2e          # Playwright: console + display windows, pairing, bids, faults, undo, sold, operator lock
 ```
 
@@ -77,7 +76,9 @@ Up to two salespeople (name + photo) are set per session and shown on the room d
 Implements: staff sign-in (PHP session cookie), admin/operator roles, sessions, the 8-step command protocol
 (lock → idempotency → lease → version → state machine → audit event → commit), operator lease and takeover,
 display pairing with hashed device tokens, whitelisted public display state, image storage in MySQL.
-Real-time is 1-second polling (works on any Cloudways stack); WebSockets can be added later without changing the UI.
+Real-time: the room display's heartbeat is a long poll — the server answers the moment the state changes (≈0.2 s),
+which works on any PHP host without a WebSocket server. A paired screen can be moved to another session from the console.
+Reports: CSV, JSON and a PDF auction report (generated in the browser with jsPDF, loaded only when used).
 
 Tests: `node --test backend/tests/api.test.mjs` against a running server with an empty database
 (see the CI workflow for the exact commands). Playwright `e2e/http.spec.ts` runs the whole flow with

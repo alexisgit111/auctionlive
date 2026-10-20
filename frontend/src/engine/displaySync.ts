@@ -17,6 +17,11 @@ export const initialSync: SyncState = { applied: null, appliedVersion: -1 }
 
 export function reduceSync(s: SyncState, input: SyncInput): { next: SyncState; outcome: SyncOutcome } {
   const v = input.state.stateVersion
+  // The screen was moved to another session: versions restart there, so take its snapshot as-is.
+  if (s.applied && input.state.sessionId !== s.applied.sessionId) {
+    if (input.kind !== 'snapshot') return { next: s, outcome: 'gap' }
+    return { next: { applied: input.state, appliedVersion: v }, outcome: 'applied' }
+  }
   if (input.kind === 'snapshot') {
     // A snapshot is authoritative unless a newer version is already on screen (late response).
     if (v < s.appliedVersion) return { next: s, outcome: 'ignored-stale' }

@@ -38,16 +38,20 @@ export function useFaults(): Faults {
 export type CloudStatus = 'ONLINE' | 'DEGRADED' | 'OFFLINE'
 
 /** Separate cloud API check: ping every 2 s; OFFLINE after 5 s without success. */
-export function useCloudHealth(): { status: CloudStatus; lastOkAt: number } {
+export function useCloudHealth(): { status: CloudStatus; lastOkAt: number; apiVersion: number | null } {
   const [lastOk, setLastOk] = useState(Date.now())
+  const [apiVersion, setApiVersion] = useState<number | null>(null)
   const [lastFail, setLastFail] = useState(0)
   const now = useNow(500)
   useEffect(() => {
     let alive = true
     const ping = async () => {
       try {
-        await server.staff.health()
-        if (alive) setLastOk(Date.now())
+        const h = (await server.staff.health()) as { apiVersion?: number }
+        if (alive) {
+          setLastOk(Date.now())
+          setApiVersion(h?.apiVersion ?? 0)
+        }
       } catch {
         if (alive) setLastFail(Date.now())
       }
@@ -61,7 +65,7 @@ export function useCloudHealth(): { status: CloudStatus; lastOkAt: number } {
   }, [])
   const since = now - lastOk
   const status: CloudStatus = since >= 5000 ? 'OFFLINE' : lastFail > lastOk ? 'DEGRADED' : 'ONLINE'
-  return { status, lastOkAt: lastOk }
+  return { status, lastOkAt: lastOk, apiVersion }
 }
 
 export function useStaffView(sessionId: string | null) {
