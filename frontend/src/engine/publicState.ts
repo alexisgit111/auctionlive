@@ -4,7 +4,7 @@
  * spread from the source objects, so new private fields can never leak by accident.
  */
 import { formatCents } from '../lib/money'
-import { MAX_SALESPEOPLE, type AuctionState, type PublicDisplayState, type PublicStatus, type Session } from './types'
+import { DEFAULT_VOLUME, MAX_SALESPEOPLE, type AuctionState, type RoomMedia, type PublicDisplayState, type PublicStatus, type Session } from './types'
 
 export const BRAND_NAME = 'Harcourts Golden Links'
 
@@ -23,7 +23,7 @@ export function derivePublicStatus(s: Pick<AuctionState, 'sessionStatus' | 'sale
   }
 }
 
-export function toPublicState(session: Session, state: AuctionState, serverTime: string): PublicDisplayState {
+export function toPublicState(session: Session, state: AuctionState, serverTime: string, media?: RoomMedia | null): PublicDisplayState {
   return {
     sessionId: state.sessionId,
     stateVersion: state.stateVersion,
@@ -31,6 +31,10 @@ export function toPublicState(session: Session, state: AuctionState, serverTime:
     saleStatus: state.saleStatus,
     publicStatus: derivePublicStatus(state),
     overlayHidden: !!state.overlayHidden,
+    welcomeOn: !!state.welcomeOn,
+    musicOn: !!state.musicOn,
+    volume: state.volume ?? DEFAULT_VOLUME,
+    media: { welcomeImage: media?.welcomeImage ?? null, welcomeMusic: media?.welcomeMusic ?? null, pauseMusic: media?.pauseMusic ?? null },
     currentBidCents: state.currentBidCents,
     currentBidDisplay: state.currentBidCents ? formatCents(state.currentBidCents) : '',
     property: {

@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useSessions, type CloudStatus } from '../../app/hooks'
 import { bus, kv, server } from '../../app/server'
 import { useUser } from '../../app/user'
@@ -7,7 +8,7 @@ import { allowedCommands } from '../../engine/engine'
 import { DEFAULT_FAULTS, writeFaults, type Faults } from '../../engine/faults'
 import type { StaffView } from '../../engine/mockServer'
 import { derivePublicStatus } from '../../engine/publicState'
-import type { Bid, Command, Device, DeviceSummary, OperatorLease } from '../../engine/types'
+import type { AudioStatus, Bid, Command, Device, DeviceSummary, OperatorLease } from '../../engine/types'
 import { formatCents, parseBidInput } from '../../lib/money'
 import { downloadFile, type OfflineRecord } from '../../lib/offlineStore'
 import { Chip, ErrorNote, Kbd, Modal } from '../ui'
@@ -549,6 +550,124 @@ export function LeasePanel({
           }}
         />
       )}
+    </div>
+  )
+}
+
+// ───────────────────────── room screen media ─────────────────────────
+/** What the room screen's speakers report (the first connected screen). */
+export function screenAudio(view: StaffView, now: number): AudioStatus | 'no-screen' {
+  const live = view.devices.filter((d) => deviceHealth(d, view.state.stateVersion, now).connected)
+  if (live.length === 0) return 'no-screen'
+  const order: AudioStatus[] = ['blocked', 'error', 'loading', 'playing', 'off']
+  const statuses = live.map((d) => d.audioStatus ?? 'off')
+  return order.find((o) => statuses.includes(o)) ?? 'off'
+}
+
+export const AUDIO_TEXT: Record<AudioStatus | 'no-screen', { text: string; tone: string }> = {
+  playing: { text: '🔊 Playing on the room screen', tone: 'text-ok' },
+  loading: { text: 'Loading music on the room screen…', tone: 'text-ink-muted' },
+  blocked: { text: '⚠ Sound blocked on the room screen — click the screen once', tone: 'text-warn' },
+  error: { text: '⚠ The room screen could not play the music file', tone: 'text-bad' },
+  off: { text: 'Silent', tone: 'text-ink-muted' },
+  'no-screen': { text: 'No room screen connected', tone: 'text-ink-muted' },
+}
+
+/** Volume changes are sent once the slider rests (not on every pixel). */
+export function useVolume(view: StaffView, run: (cmd: Command) => Promise<boolean>, enabled: boolean) {
+  const server = view.state.volume ?? 80
+  const [v, setV] = useState(server)
+  const dirty = useRef(false)
+  const runRef = useRef(run)
+  runRef.current = run
+  useEffect(() => {
+    if (!dirty.current) setV(server)
+  }, [server])
+  useEffect(() => {
+    if (!dirty.current || !enabled) return
+    const t = setTimeout(() => {
+      dirty.current = false
+      if (v !== server) void runRef.current({ type: 'SET_VOLUME', percent: v })
+    }, 450)
+    return () => clearTimeout(t)
+  }, [v, server, enabled])
+  return [
+    v,
+    (n: number) => {
+      dirty.current = true
+      setV(n)
+    },
+  ] as const
+}
+
+export function RoomMediaPanel({
+  view,
+  now,
+  enabled,
+  pending,
+  run,
+}: {
+  view: StaffView
+  now: number
+  enabled: boolean
+  pending: boolean
+  run: (cmd: Command) => Promise<boolean>
+}) {
+  const { user } = useUser()
+  const s = view.state
+  const media = useQuery({ queryKey: ['media'], queryFn: () => server.media.get(), staleTime: 30_000 })
+  const [vol, setVol] = useVolume(view, run, enabled)
+  const audio = screenAudio(view, now)
+  const silent = media.data && !media.data.welcomeMusic && !media.data.pauseMusic
+  const shownAudio = (s.welcomeOn || s.musicOn) ? audio : audio === 'no-screen' ? audio : 'off'
+  return (
+    <div className="panel p-4" data-testid="room-media-panel">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="panel-title">Room screen media</span>
+        {user.role === 'admin' && (
+          <Link to="/auction/media" className="text-xs font-semibold text-brand underline">
+            Image &amp; music…
+          </Link>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          data-testid="toggle-welcome"
+          className={`btn py-3 ${s.welcomeOn ? 'bg-brand text-white hover:bg-brand-600' : 'border border-line text-navy hover:bg-navy/5'}`}
+          disabled={!enabled || pending}
+          onClick={() => void run({ type: 'SET_WELCOME', on: !s.welcomeOn })}
+        >
+          Welcome screen {s.welcomeOn ? 'ON' : 'OFF'}
+        </button>
+        <button
+          data-testid="toggle-music"
+          className={`btn py-3 ${s.musicOn ? 'bg-brand text-white hover:bg-brand-600' : 'border border-line text-navy hover:bg-navy/5'}`}
+          disabled={!enabled || pending}
+          onClick={() => void run({ type: 'SET_MUSIC', on: !s.musicOn })}
+        >
+          Music {s.musicOn ? 'ON' : 'OFF'}
+        </button>
+      </div>
+      <label className="mt-3 flex items-center gap-3 text-sm text-ink-muted">
+        <span className="w-14 shrink-0 font-semibold">Volume</span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={5}
+          value={vol}
+          disabled={!enabled}
+          aria-label="Room screen volume"
+          className="flex-1 accent-brand"
+          onChange={(e) => setVol(Number(e.target.value))}
+        />
+        <span className="w-10 text-right font-semibold tabular-nums text-navy">{vol}</span>
+      </label>
+      <div className={`mt-2 text-sm font-semibold ${AUDIO_TEXT[shownAudio].tone}`} data-testid="screen-audio">
+        {AUDIO_TEXT[shownAudio].text}
+      </div>
+      {silent && <div className="mt-1 text-xs text-warn">No music uploaded yet{user.role === 'admin' ? ' — add it under Media' : ''}.</div>}
+      <div className="mt-1 text-xs text-ink-faint">Start auction closes the welcome screen · Pause starts the music</div>
     </div>
   )
 }

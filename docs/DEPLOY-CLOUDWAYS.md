@@ -69,10 +69,24 @@ Updates reach the screen almost instantly: the server holds each display request
 the auction changes. Each room display keeps one PHP worker busy while it waits; set `'display_wait_ms' => 0` in the
 config file to fall back to plain 1-second polling.
 
+## Room media (welcome screen + music)
+- **Media** page (admins): the welcome image (built-in Golden Links image by default) and the music — the same for every
+  session. Music uploads go in 512 KB pieces, so the host's upload limit doesn't matter; files are stored in
+  `<app>/private_html/auction-media/` (outside the web root, untouched by Git deploys — include it in backups).
+  Override the folder with `'media_dir' => '/path'` in the config file if needed.
+- Console / phone: **Welcome** and **Music** buttons, volume slider. *Start auction* closes the welcome screen;
+  *Pause* starts the music, *Resume* / Sold / Passed in stop it.
+- Sound plays only on the room screen computer. Allow sound for the site once in Chrome on that computer
+  (address-bar icon → Site settings → Sound: Allow) or add `--autoplay-policy=no-user-gesture-required` to the kiosk
+  shortcut. If Chrome still blocks it, the console shows "Sound blocked" and the screen shows "Click to turn on sound".
+- Public performance of commercial music needs a OneMusic NZ licence.
+
 ## Troubleshooting
 | Symptom | Cause / fix |
 |---|---|
 | "Server is not configured yet" | Config file missing or in the wrong folder (step 2) |
 | "Cannot connect to the database" | Wrong DB name / user / password in the config file |
 | 404 on `/auction/...` | `public_html/index.php` missing — Pull again |
+| "Sound blocked on the room screen" | Click the screen once, or allow Sound for the site in Chrome (see Room media) |
+| Music upload fails | PHP must be able to create `private_html/auction-media` — check folder permissions |
 | Room display shows CONNECTION LOST | Display PC offline, or the session ended and the display was revoked — re-pair |

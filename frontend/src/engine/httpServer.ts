@@ -2,7 +2,7 @@
  * HTTP implementation of AppServer → PHP API at /api/index.php?r=/route.
  * Same method signatures as the mock, so UI code is unchanged.
  */
-import type { AppServer, AuthApi, ManagedUser } from './api'
+import type { AppServer, AuthApi, ManagedUser, MediaApi, MediaFile, MediaSettingsView } from './api'
 import type { ExecuteResponse, SessionInput, SessionSummary, StaffView } from './mockServer'
 import {
   ApiError,
@@ -13,7 +13,9 @@ import {
   type DeviceSummary,
   type ErrorCode,
   type OperatorLease,
+  type AudioStatus,
   type Pairing,
+  type RoomMedia,
   type PublicDisplayState,
   type Session,
   type User,
@@ -110,11 +112,11 @@ export function createHttpServer(base = ''): AppServer {
       ),
     getPublicState: (token: string | null) => call<PublicDisplayState>('GET', '/display/state', undefined, token),
     // With wait=true the server answers as soon as anything changes (long poll, ≤ ~3.5 s).
-    heartbeat: (token: string | null, appliedVersion: number, opts?: { wait?: boolean; sessionId?: string }) =>
-      call<{ serverVersion: number; sessionId: string }>(
+    heartbeat: (token: string | null, appliedVersion: number, opts?: { wait?: boolean; sessionId?: string; audio?: AudioStatus }) =>
+      call<{ serverVersion: number; sessionId: string; media: RoomMedia }>(
         'POST',
         '/display/heartbeat',
-        { appliedVersion, wait: !!opts?.wait, sessionId: opts?.sessionId ?? '' },
+        { appliedVersion, wait: !!opts?.wait, sessionId: opts?.sessionId ?? '', audio: opts?.audio },
         token,
       ),
     ack: async (token: string | null, version: number) => {
@@ -147,15 +149,54 @@ export function createHttpServer(base = ''): AppServer {
     },
   }
 
+  const media: MediaApi = {
+    get: () => call<MediaSettingsView>('GET', '/media/settings'),
+    set: (patch) => call<MediaSettingsView>('POST', '/media/settings', patch),
+    async uploadMusic(file, onProgress) {
+      const start = await call<{ uploadId: string; chunkSize: number }>('POST', '/media/upload/start', {
+        name: file.name,
+        size: file.size,
+        mime: file.type || (file.name.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' : ''),
+      })
+      const n = Math.ceil(file.size / start.chunkSize)
+      for (let i = 0; i < n; i++) {
+        const blob = file.slice(i * start.chunkSize, (i + 1) * start.chunkSize)
+        const data = await blobToBase64(blob)
+        // a dropped connection retries the same chunk (the server accepts it again)
+        for (let attempt = 0; ; attempt++) {
+          try {
+            await call('POST', '/media/upload/chunk', { uploadId: start.uploadId, index: i, data })
+            break
+          } catch (e) {
+            if (attempt >= 2) throw e
+            await new Promise((r) => setTimeout(r, 800 * (attempt + 1)))
+          }
+        }
+        onProgress?.((i + 1) / n)
+      }
+      return call<MediaFile>('POST', '/media/upload/finish', { uploadId: start.uploadId })
+    },
+  }
+
   return {
     mode: 'http',
     staff,
     display,
     auth,
+    media,
     uploadImage: async (dataUrl) => (await call<{ ref: string }>('POST', '/images', { dataUrl })).ref,
     ensureSeed: async () => {},
     resetAll: () => {},
     displayPollMs: 1000,
     displayLongPoll: true,
   }
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader()
+    fr.onload = () => resolve(String(fr.result).replace(/^data:[^,]*,/, ''))
+    fr.onerror = () => reject(fr.error)
+    fr.readAsDataURL(blob)
+  })
 }

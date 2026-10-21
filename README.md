@@ -45,7 +45,7 @@ npm run dev          # http://localhost:5173
 ### Tests
 
 ```bash
-npm test             # 82 unit tests: K/M parsing, state machine, idempotency, lease, audit, display whitelist, sync
+npm test             # 86 unit tests: K/M parsing, state machine, idempotency, lease, audit, display whitelist, sync
 npm run e2e          # Playwright: console + display windows, pairing, bids, faults, undo, sold, operator lock
 ```
 
@@ -79,6 +79,13 @@ Any digit cancels a preview. Status buttons (Start / Pause / On market / Sold / 
 Undo, Correct, stickers, pairing a room screen and End are in the ☰ menu. After Sold / Passed in, **Undo SOLD — reopen…**
 puts the auction back exactly where it was (reason recorded; all bids kept). "Phone layout" / "Switch to desktop
 layout" force either layout on any device. Add the page to the home screen to run it full screen.
+
+## Room media
+
+Welcome screen (full-screen image + music) and pause music on the room screen, the same for every session.
+Admins set the image and music on **Media**; the console and phone have **Welcome** / **Music** buttons and a volume
+slider. Start auction closes the welcome screen; Pause starts the music. The screen reports whether sound is playing or
+blocked by the browser. Music files are not kept in Git — upload them on the Media page.
 
 ## Brand
 

@@ -86,6 +86,12 @@ export interface AuctionState {
   updatedAt: string
   /** Operator hid the stickers (status circle + badge) on the room display. Missing = false. */
   overlayHidden?: boolean
+  /** Room screen: full-screen welcome image + welcome music. Closed automatically by START. */
+  welcomeOn?: boolean
+  /** Room screen music (the "pause" music). Starts automatically on PAUSE, stops on RESUME / end. */
+  musicOn?: boolean
+  /** Room screen music volume 0–100 (missing = 80). */
+  volume?: number
   /** Where the auction was just before Sold / Passed in / End — restored by REOPEN. */
   concludedFrom?: { sessionStatus: SessionStatus; saleStatus: SaleStatus } | null
 }
@@ -106,6 +112,11 @@ export type EventType =
   | 'ON_THE_MARKET'
   | 'OFF_THE_MARKET'
   | 'REOPENED'
+  | 'WELCOME_SHOWN'
+  | 'WELCOME_HIDDEN'
+  | 'MUSIC_STARTED'
+  | 'MUSIC_STOPPED'
+  | 'VOLUME_SET'
   | 'OVERLAY_HIDDEN'
   | 'OVERLAY_SHOWN'
   | 'SOLD'
@@ -140,6 +151,9 @@ export type Command =
   | { type: 'END' }
   | { type: 'OFF_MARKET' }
   | { type: 'REOPEN'; reason: string }
+  | { type: 'SET_WELCOME'; on: boolean }
+  | { type: 'SET_MUSIC'; on: boolean }
+  | { type: 'SET_VOLUME'; percent: number }
   | { type: 'SET_OVERLAY'; hidden: boolean }
   | { type: 'ON_THE_MARKET' }
   | { type: 'SOLD' }
@@ -170,7 +184,11 @@ export interface Device {
   lastHeartbeatAt: string | null
   lastAckedVersion: number
   lastAckedAt: string | null
+  /** What the screen's speakers are doing, reported by the display */
+  audioStatus?: AudioStatus | null
 }
+
+export type AudioStatus = 'off' | 'loading' | 'playing' | 'blocked' | 'error'
 
 export interface Pairing {
   id: string
@@ -187,6 +205,15 @@ export interface Pairing {
 /** A paired screen as listed for staff (any session) — never includes the token hash. */
 export type DeviceSummary = Omit<Device, 'tokenHash'> & { sessionTitle: string; sessionAddress: string }
 
+/** Company-wide room screen media, the same for every session (set on the Room media page). */
+export interface RoomMedia {
+  welcomeImage: string | null
+  welcomeMusic: string | null
+  pauseMusic: string | null
+}
+
+export const DEFAULT_VOLUME = 80
+
 /** The ONLY shape a room display ever receives. */
 export interface PublicDisplayState {
   sessionId: string
@@ -196,6 +223,12 @@ export interface PublicDisplayState {
   publicStatus: PublicStatus
   /** true → the display shows no status circle and no badge sticker. */
   overlayHidden: boolean
+  welcomeOn: boolean
+  musicOn: boolean
+  /** 0–100 */
+  volume: number
+  /** Company-wide room media (null welcomeImage → built-in image; null pauseMusic → welcome music) */
+  media: RoomMedia
   currentBidCents: string | null
   currentBidDisplay: string
   property: {

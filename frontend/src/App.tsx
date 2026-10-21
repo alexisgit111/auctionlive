@@ -3,6 +3,7 @@ import { StaffShell } from './components/StaffShell'
 import { ControlPage } from './pages/ControlPage'
 import { DisplayPage } from './pages/DisplayPage'
 import { LoginPage, SetupPage } from './pages/LoginPage'
+import { MediaPage } from './pages/MediaPage'
 import { PairPage } from './pages/PairPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { SessionsPage } from './pages/SessionsPage'
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="/auction/sessions" element={<SessionsPage />} />
         <Route path="/auction/reports" element={<ReportsPage />} />
         <Route path="/auction/users" element={<UsersPage />} />
+        <Route path="/auction/media" element={<MediaPage />} />
         <Route path="/auction/account" element={<AccountPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/auction/control" replace />} />

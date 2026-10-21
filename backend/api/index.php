@@ -8,12 +8,13 @@
 declare(strict_types=1);
 const AUCTION_API = true;
 /** Bump together with API_VERSION in frontend/src/engine/api.ts whenever routes change. */
-const API_VERSION = 3;
+const API_VERSION = 4;
 
 require __DIR__ . '/lib/core.php';
 require __DIR__ . '/lib/engine.php';
 require __DIR__ . '/lib/auth.php';
 require __DIR__ . '/lib/handlers.php';
+require __DIR__ . '/lib/media.php';
 
 ini_set('display_errors', '0');
 header('X-Content-Type-Options: nosniff');
@@ -60,6 +61,14 @@ $routes = [
     ['GET', '/display/state', 'h_display_state'],
     ['POST', '/display/heartbeat', 'h_display_heartbeat'],
     ['POST', '/display/ack', 'h_display_ack'],
+
+    ['GET', '/media/settings', 'h_media_settings_get'],
+    ['POST', '/media/settings', 'h_media_settings_set'],
+    ['POST', '/media/upload/start', 'h_media_upload_start'],
+    ['POST', '/media/upload/chunk', 'h_media_upload_chunk'],
+    ['POST', '/media/upload/finish', 'h_media_upload_finish'],
+    ['GET', '/media/{id}', 'h_media_get'],
+    ['HEAD', '/media/{id}', 'h_media_get'],
 
     ['POST', '/images', 'h_image_upload'],
     ['GET', '/images/{id}', 'h_image_get'],

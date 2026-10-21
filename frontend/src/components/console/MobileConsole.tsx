@@ -18,7 +18,7 @@ import type { Command } from '../../engine/types'
 import { computeTarget, typeKey, type CalcResult } from '../../lib/calcEntry'
 import { formatCents, type Cents } from '../../lib/money'
 import { QUICK_INCREMENTS_K } from './BidEntry'
-import { AuctionDialogs, LeasePanel, ScreenSwitchBanner, useDisplaysHealth, type Dialog } from './panels'
+import { AUDIO_TEXT, AuctionDialogs, LeasePanel, ScreenSwitchBanner, screenAudio, useDisplaysHealth, useVolume, type Dialog } from './panels'
 
 interface Props {
   view: StaffView
@@ -81,6 +81,7 @@ export function MobileConsole(p: Props) {
   const keysOn = p.canBid && !p.pending
   const pub = derivePublicStatus(s)
   const displays = useDisplaysHealth(p.view, p.now)
+  const audio = screenAudio(p.view, p.now)
 
   const [input, setInput] = useState('')
   const [armed, setArmed] = useState<Armed | null>(null)
@@ -306,6 +307,21 @@ export function MobileConsole(p: Props) {
         </div>
       )}
 
+      {/* ── room screen media ── */}
+      {p.lease.hasControl && (
+        <div className="grid shrink-0 grid-cols-2 gap-1.5 px-2 pt-1.5">
+          <Toggle on={!!s.welcomeOn} disabled={!can('SET_WELCOME')} onClick={() => void p.run({ type: 'SET_WELCOME', on: !s.welcomeOn })} testId="m-toggle-welcome">
+            🖼 Welcome {s.welcomeOn ? 'ON' : 'OFF'}
+          </Toggle>
+          <Toggle on={!!s.musicOn} disabled={!can('SET_MUSIC')} onClick={() => void p.run({ type: 'SET_MUSIC', on: !s.musicOn })} testId="m-toggle-music" warn={(s.welcomeOn || s.musicOn) && (audio === 'blocked' || audio === 'error')}>
+            ♪ Music {s.musicOn ? 'ON' : 'OFF'}
+          </Toggle>
+        </div>
+      )}
+      {(s.welcomeOn || s.musicOn) && (audio === 'blocked' || audio === 'error') && (
+        <div className="shrink-0 px-3 pt-1 text-center text-[12px] font-bold text-warn">{AUDIO_TEXT[audio].text}</div>
+      )}
+
       {/* ── quick increments ── */}
       <div className="grid shrink-0 grid-cols-6 gap-1.5 px-2 pt-1.5">
         {QUICK_INCREMENTS_K.map((k) => {
@@ -386,6 +402,20 @@ export function MobileConsole(p: Props) {
 }
 
 // ───────────────────────── pieces ─────────────────────────
+function Toggle({ on, disabled, onClick, children, testId, warn = false }: { on: boolean; disabled: boolean; onClick: () => void; children: ReactNode; testId: string; warn?: boolean }) {
+  return (
+    <button
+      data-testid={testId}
+      className={`relative h-10 rounded-lg text-[14px] font-bold disabled:opacity-35 ${on ? 'bg-brand text-white' : 'border border-line bg-white text-navy'}`}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {children}
+      {warn && <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-warn ring-2 ring-white" aria-label="Sound blocked" />}
+    </button>
+  )
+}
+
 function Dot({ ok, warn, label }: { ok: boolean; warn: boolean; label: string }) {
   return (
     <span className="flex flex-col items-center px-0.5" title={label}>
@@ -493,6 +523,30 @@ function Act({
   )
 }
 
+function VolumeRow({ view, run, enabled, audioText }: { view: StaffView; run: (c: Command) => Promise<boolean>; enabled: boolean; audioText: { text: string; tone: string } }) {
+  const [vol, setVol] = useVolume(view, run, enabled)
+  return (
+    <div className="border-t border-line px-4 py-3">
+      <label className="flex items-center gap-3">
+        <span className="text-[16px] font-semibold text-navy">Music volume</span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={5}
+          value={vol}
+          disabled={!enabled}
+          aria-label="Room screen volume"
+          className="flex-1 accent-brand"
+          onChange={(e) => setVol(Number(e.target.value))}
+        />
+        <span className="w-8 text-right font-semibold tabular-nums text-navy">{vol}</span>
+      </label>
+      <div className={`mt-1 text-sm font-semibold ${audioText.tone}`}>{audioText.text}</div>
+    </div>
+  )
+}
+
 function PairBox({ sessionId, disabled }: { sessionId: string; disabled: boolean }) {
   const { user } = useUser()
   const [code, setCode] = useState('')
@@ -536,7 +590,7 @@ function PairBox({ sessionId, disabled }: { sessionId: string; disabled: boolean
 function MenuSheet(
   p: Props & { can: (t: Command['type']) => boolean; onClose: () => void; screenText: string },
 ) {
-  const { logout } = useAuth()
+  const { logout, user: me } = useAuth()
   const s = p.view.state
   const recent = p.view.bids.slice(0, 5)
   const item = 'flex w-full items-center justify-between px-4 py-3.5 text-left text-[16px] font-semibold text-navy disabled:opacity-35'
@@ -572,6 +626,7 @@ function MenuSheet(
           </button>
         </div>
 
+        <VolumeRow view={p.view} run={p.run} enabled={p.controlsEnabled} audioText={AUDIO_TEXT[screenAudio(p.view, p.now)]} />
         <div className="bg-subtle px-4 py-3">
           <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-ink-faint">Room screen</div>
           <div className="text-sm font-semibold text-navy">{p.screenText}</div>
@@ -596,6 +651,11 @@ function MenuSheet(
             <button className={item} onClick={act(() => void p.lease.release())}>
               Release operator control
             </button>
+          )}
+          {me?.role === 'admin' && (
+            <Link className={item} to="/auction/media" onClick={p.onClose}>
+              Room media (image &amp; music)
+            </Link>
           )}
           <Link className={item} to="/auction/reports" onClick={p.onClose}>
             Reports

@@ -17,7 +17,7 @@ export const kv = browserKV
 export const BACKEND: 'mock' | 'http' = import.meta.env.VITE_BACKEND === 'http' ? 'http' : 'mock'
 
 function createMockApp(): AppServer {
-  const mock = createMockServer({ kv: browserKV, lock: createBrowserLock(), bus })
+  const mock = createMockServer({ kv: browserKV, lock: createBrowserLock(), bus, storeBlob: putLocalImage })
   const USER_KEY = 'gl-auction-user'
   const DEMO_PASSWORD = 'demo1234'
   const readOnly = () => Promise.reject(new ApiError('FORBIDDEN', 'User management is not available in prototype mode', 403))
@@ -57,6 +57,7 @@ function createMockApp(): AppServer {
     staff: mock.staff,
     display: mock.display,
     auth,
+    media: mock.media,
     uploadImage: putLocalImage,
     ensureSeed: mock.ensureSeed,
     resetAll: mock.resetAll,

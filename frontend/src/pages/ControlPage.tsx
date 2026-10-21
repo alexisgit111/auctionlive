@@ -16,6 +16,7 @@ import {
   HealthStrip,
   LeasePanel,
   OfflinePanel,
+  RoomMediaPanel,
   ScreenSwitchBanner,
 } from '../components/console/panels'
 import { ErrorNote, Modal } from '../components/ui'
@@ -287,6 +288,7 @@ export function ControlPage() {
               setDialog={setDialog}
               correctInitial={correctInitial}
             />
+            <RoomMediaPanel view={view} now={now} enabled={controlsEnabled} pending={runner.phase !== 'idle'} run={run} />
             <DisplayPanel view={view} now={now} cloudOk={cloudOk} />
             <div className="max-h-[340px] min-h-[160px]">
               <BidHistory bids={view.bids} />

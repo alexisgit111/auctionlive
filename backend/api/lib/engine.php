@@ -19,6 +19,9 @@ function eng_initial_state(string $sessionId, string $now): array
         'eventSeq' => 0,
         'updatedAt' => $now,
         'overlayHidden' => false,
+        'welcomeOn' => false,
+        'musicOn' => false,
+        'volume' => 80,
     ];
 }
 
@@ -160,6 +163,31 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
             $evType = 'AUCTION_ENDED';
             break;
 
+        case 'SET_WELCOME':
+            $on = !empty($cmd['on']);
+            if (!empty($state['welcomeOn']) === $on) throw eng_transition($on ? 'Welcome screen is already on' : 'Welcome screen is already off');
+            $next['welcomeOn'] = $on;
+            $evType = $on ? 'WELCOME_SHOWN' : 'WELCOME_HIDDEN';
+            break;
+
+        case 'SET_MUSIC':
+            $on = !empty($cmd['on']);
+            if (!empty($state['musicOn']) === $on) throw eng_transition($on ? 'Music is already playing' : 'Music is already off');
+            $next['musicOn'] = $on;
+            $evType = $on ? 'MUSIC_STARTED' : 'MUSIC_STOPPED';
+            break;
+
+        case 'SET_VOLUME':
+            $raw = $cmd['percent'] ?? null;
+            if (!is_numeric($raw)) throw new ApiError('VALIDATION_FAILED', 'Volume must be 0–100', 422);
+            $v = (int) round((float) $raw);
+            if ($v < 0 || $v > 100) throw new ApiError('VALIDATION_FAILED', 'Volume must be 0–100', 422);
+            if ($v === (int) ($state['volume'] ?? 80)) throw eng_transition('Volume unchanged');
+            $next['volume'] = $v;
+            $evType = 'VOLUME_SET';
+            $data = ['volume' => $v];
+            break;
+
         case 'REOPEN':
             // Undo Sold / Passed in / End: back to exactly where the auction was. Bids are untouched.
             if ($state['sessionStatus'] !== 'ENDED') throw eng_transition('Auction has not ended');
@@ -257,6 +285,13 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
         $statusChanged = $next['sessionStatus'] !== $state['sessionStatus'] || $next['saleStatus'] !== $state['saleStatus'];
         $next['overlayHidden'] = $statusChanged ? false : !empty($state['overlayHidden']);
     }
+    // Room media follows the auction (see engine.ts)
+    if ($type === 'START') $next['welcomeOn'] = false;
+    if ($type !== 'SET_MUSIC') {
+        if ($next['sessionStatus'] === 'PAUSED' && $state['sessionStatus'] !== 'PAUSED') $next['musicOn'] = true;
+        elseif ($state['sessionStatus'] === 'PAUSED' && $next['sessionStatus'] !== 'PAUSED') $next['musicOn'] = false;
+        elseif ($next['sessionStatus'] === 'ENDED' && $state['sessionStatus'] !== 'ENDED') $next['musicOn'] = false;
+    }
     $next['stateVersion'] = $state['stateVersion'] + 1;
     $next['eventSeq'] = $state['eventSeq'] + 1;
     $next['updatedAt'] = $ctx['now'];
@@ -314,6 +349,10 @@ function to_public_state(array $session, array $state): array
         'saleStatus' => $state['saleStatus'],
         'publicStatus' => derive_public_status($state),
         'overlayHidden' => !empty($state['overlayHidden']),
+        'welcomeOn' => !empty($state['welcomeOn']),
+        'musicOn' => !empty($state['musicOn']),
+        'volume' => (int) ($state['volume'] ?? 80),
+        'media' => room_media_public(),
         'currentBidCents' => $state['currentBidCents'],
         'currentBidDisplay' => format_cents($state['currentBidCents']),
         'property' => [

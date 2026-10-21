@@ -174,7 +174,7 @@ function for_update(): string
     return is_sqlite() ? '' : ' FOR UPDATE';
 }
 
-const SCHEMA_VERSION = '1';
+const SCHEMA_VERSION = '2';
 
 function ensure_schema(PDO $pdo): void
 {
@@ -219,8 +219,18 @@ function ensure_schema(PDO $pdo): void
             status VARCHAR(16) NOT NULL, response LONGTEXT NULL, created_at VARCHAR(32) NOT NULL)$engine",
         "CREATE TABLE IF NOT EXISTS auction_images (
             id CHAR(32) PRIMARY KEY, mime VARCHAR(40) NOT NULL, data LONGBLOB NOT NULL, created_at VARCHAR(32) NOT NULL)$engine",
+        // v2: room media (music files live on disk, see media_dir())
+        "CREATE TABLE IF NOT EXISTS auction_media (
+            id CHAR(32) PRIMARY KEY, kind VARCHAR(16) NOT NULL, name VARCHAR(190) NOT NULL, mime VARCHAR(40) NOT NULL,
+            size BIGINT NOT NULL, status VARCHAR(16) NOT NULL, created_by VARCHAR(32) NOT NULL, created_at VARCHAR(32) NOT NULL)$engine",
     ];
     foreach ($stmts as $s) $pdo->exec($s);
+    // v2: what the room screen's speakers are doing (playing / blocked by the browser …)
+    try {
+        $pdo->exec('ALTER TABLE auction_devices ADD COLUMN audio_status VARCHAR(16) NULL');
+    } catch (PDOException) {
+        // column already exists
+    }
     // indexes (ignore "already exists")
     foreach ([
         'CREATE INDEX idx_bids_session ON auction_bids (session_id, status, seq)',

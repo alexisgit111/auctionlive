@@ -12,3 +12,6 @@ _to_delete/
 config.local.php
 auction-live-config.php
 _upload_to_public_html/
+
+# room media uploaded in local dev (fallback folder)
+auction-media-store/

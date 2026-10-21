@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { loadCredential, saveCredential, useDisplaySync } from '../app/displaySync'
 import { BrandLogo, PersonPhoto, PropertyImage } from '../components/brand'
 import { BathIcon, BedIcon, FloorIcon, GarageIcon, LandIcon } from '../components/display/icons'
+import { RoomAudio, WelcomeOverlay } from '../components/display/RoomMedia'
 import type { DisplayOverlay, PublicDisplayState, PublicStatus, Salesperson } from '../engine/types'
 
 /**
@@ -247,17 +248,21 @@ function Stage({ state, overlay }: { state: PublicDisplayState | null; overlay: 
         <span className="text-[1.55cqw] font-light text-white">{FOOTER_TEXT}</span>
       </div>
 
+      {/* ── Welcome screen + music (controlled from the console) ── */}
+      <WelcomeOverlay state={state} />
+      <RoomAudio state={state} />
+
       {/* ── Connection overlays — never present stale data as live ── */}
       {overlay === 'RECONNECTING' && (
         <div
-          className="absolute inset-x-0 top-0 flex items-center justify-center bg-warn py-[0.5cqw] text-[1.2cqw] font-bold uppercase tracking-[0.2em] text-white"
+          className="absolute inset-x-0 top-0 z-20 flex items-center justify-center bg-warn py-[0.5cqw] text-[1.2cqw] font-bold uppercase tracking-[0.2em] text-white"
           role="status"
         >
           Reconnecting…
         </div>
       )}
       {lost && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white/75" role="alert" data-testid="connection-lost">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/75" role="alert" data-testid="connection-lost">
           <div className="rounded-[1cqw] border-[0.3cqw] border-bad bg-white px-[4cqw] py-[2.5cqw] text-center shadow-xl">
             <div className="text-[3.4cqw] font-bold uppercase tracking-[0.12em] text-bad">Connection lost</div>
             <div className="mt-[0.6cqw] text-[1.6cqw] text-ink-muted">Bid shown may be out of date · Reconnecting automatically</div>
@@ -265,7 +270,7 @@ function Stage({ state, overlay }: { state: PublicDisplayState | null; overlay: 
         </div>
       )}
       {!state && !lost && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white text-[2cqw] font-semibold text-ink-faint">Connecting…</div>
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-white text-[2cqw] font-semibold text-ink-faint">Connecting…</div>
       )}
     </StageFrame>
   )

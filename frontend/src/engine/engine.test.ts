@@ -116,6 +116,35 @@ describe('state machine', () => {
     expect(applyCommand(low.state, low.bids, { type: 'BID', amountCents: K(960) }, ctx()).state.currentBidCents).toBe(K(960))
   })
 
+  it('room media: welcome closes on start, music follows pause, buttons override, volume 0–100', () => {
+    const w = run([{ type: 'SET_WELCOME', on: true }])
+    expect(w.state.welcomeOn).toBe(true)
+    expect(w.events[0].type).toBe('WELCOME_SHOWN')
+    expect(run([{ type: 'SET_WELCOME', on: true }, { type: 'START' }]).state.welcomeOn).toBe(false)
+
+    const paused = run([{ type: 'START' }, { type: 'PAUSE' }])
+    expect(paused.state.musicOn).toBe(true)
+    expect(run([{ type: 'START' }, { type: 'PAUSE' }, { type: 'RESUME' }]).state.musicOn).toBe(false)
+    // button turns it off during the pause and it stays off
+    const quiet = run([{ type: 'START' }, { type: 'PAUSE' }, { type: 'SET_MUSIC', on: false }, { type: 'SET_OVERLAY', hidden: true }])
+    expect(quiet.state.musicOn).toBe(false)
+    // music by hand while live, stops when the sale ends
+    const manual = run([{ type: 'START' }, { type: 'SET_MUSIC', on: true }, { type: 'BID', amountCents: K(900) }])
+    expect(manual.state.musicOn).toBe(true)
+    expect(run([{ type: 'START' }, { type: 'SET_MUSIC', on: true }, { type: 'PASSED_IN' }]).state.musicOn).toBe(false)
+    expect(() => run([{ type: 'SET_MUSIC', on: false }])).toThrow(/already off/)
+
+    expect(run([{ type: 'SET_VOLUME', percent: 35 }]).state.volume).toBe(35)
+    expect(() => run([{ type: 'SET_VOLUME', percent: 101 }])).toThrow(/0–100/)
+    const pub = toPublicState(
+      { property: { addressLine: '', suburb: '', city: '', heroImage: null }, salespeople: [] } as unknown as Session,
+      paused.state,
+      'now',
+      { welcomeImage: null, welcomeMusic: '/m/1', pauseMusic: null },
+    )
+    expect(pub).toMatchObject({ musicOn: true, welcomeOn: false, volume: 80, media: { welcomeMusic: '/m/1', pauseMusic: null } })
+  })
+
   it('reopen undoes SOLD / PASSED IN / END and restores where the auction was', () => {
     const sold = run([{ type: 'START' }, { type: 'BID', amountCents: K(1000) }, { type: 'ON_THE_MARKET' }, { type: 'SOLD' }])
     expect(allowedCommands(sold.state).has('REOPEN')).toBe(true)
@@ -150,7 +179,7 @@ describe('state machine', () => {
   })
 
   it('reports allowed commands for the UI', () => {
-    expect([...allowedCommands(initialState('s', 'n'))]).toEqual(['START'])
+    expect([...allowedCommands(initialState('s', 'n'))]).toEqual(['START', 'SET_WELCOME', 'SET_MUSIC', 'SET_VOLUME'])
     const { state } = run([{ type: 'START' }])
     const a = allowedCommands(state)
     expect(a.has('BID')).toBe(true)

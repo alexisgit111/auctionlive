@@ -3,6 +3,7 @@ import { initialSync, reduceSync, type SyncState } from '../engine/displaySync'
 import { readFaults } from '../engine/faults'
 import { ApiError, type DisplayOverlay, type PublicDisplayState } from '../engine/types'
 import { setWorkerInterval } from '../lib/workerTimer'
+import { getAudioStatus, onAudioStatus } from './roomAudio'
 import { bus, kv, server } from './server'
 
 export interface DisplayCredential {
@@ -134,10 +135,16 @@ export function useDisplaySync(cred: DisplayCredential | null) {
         const r = await server.display.heartbeat(token, syncRef.current.appliedVersion, {
           wait,
           sessionId: applied?.sessionId,
+          audio: getAudioStatus(),
         })
         if (stopped) return false
         markOk()
-        if (r.serverVersion > syncRef.current.appliedVersion || (applied && r.sessionId && r.sessionId !== applied.sessionId)) {
+        const mediaChanged = !!applied && !!r.media && JSON.stringify(r.media) !== JSON.stringify(applied.media)
+        if (
+          r.serverVersion > syncRef.current.appliedVersion ||
+          (applied && r.sessionId && r.sessionId !== applied.sessionId) ||
+          mediaChanged
+        ) {
           await snapshot()
           return true
         }
@@ -155,6 +162,8 @@ export function useDisplaySync(cred: DisplayCredential | null) {
         return false
       }
     }
+    // Tell the console right away when the speakers change state (playing / blocked …)
+    const offAudio = onAudioStatus(() => void beat(false))
     if (server.displayLongPoll) {
       void (async () => {
         while (!stopped) {
@@ -168,6 +177,7 @@ export function useDisplaySync(cred: DisplayCredential | null) {
       })()
       return () => {
         stopped = true
+        offAudio()
       }
     }
     void beat(false)
@@ -175,6 +185,7 @@ export function useDisplaySync(cred: DisplayCredential | null) {
     return () => {
       stopped = true
       stop()
+      offAudio()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, snapshot])

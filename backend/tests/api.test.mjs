@@ -264,3 +264,84 @@ describe('images', () => {
     assert.equal((await op1('POST', '/images', { dataUrl: png1x1 })).status, 403)
   })
 })
+
+describe('room media', () => {
+  it('welcome / music / volume commands, with music following pause', async () => {
+    const s3 = await admin('POST', '/sessions', { title: 'Media', scheduledAt: new Date().toISOString(), salespeople: [], defaultIncrementCents: K(10), property: { addressLine: '3 Media Lane', suburb: 'Mt Roskill', city: 'Auckland', heroImage: null } })
+    const id = s3.json.id
+    const lease3 = (await admin('POST', `/sessions/${id}/lease`, {})).json.leaseToken
+    const run = async (cmd) => {
+      const v = (await admin('GET', `/sessions/${id}/view`)).json.state.stateVersion
+      return admin('POST', `/sessions/${id}/execute`, { cmd, idempotencyKey: randomUUID(), expectedVersion: v, leaseToken: lease3 })
+    }
+    assert.equal((await run({ type: 'SET_WELCOME', on: true })).json.state.welcomeOn, true)
+    const started = await run({ type: 'START' })
+    assert.equal(started.json.state.welcomeOn, false)
+    assert.equal((await run({ type: 'PAUSE' })).json.state.musicOn, true)
+    assert.equal((await run({ type: 'SET_MUSIC', on: false })).json.state.musicOn, false)
+    assert.equal((await run({ type: 'SET_MUSIC', on: false })).status, 409)
+    assert.equal((await run({ type: 'SET_MUSIC', on: true })).json.state.musicOn, true)
+    assert.equal((await run({ type: 'RESUME' })).json.state.musicOn, false)
+    assert.equal((await run({ type: 'SET_VOLUME', percent: 55 })).json.state.volume, 55)
+    assert.equal((await run({ type: 'SET_VOLUME', percent: 150 })).status, 422)
+    const types = (await admin('GET', `/sessions/${id}/events`)).json.map((e) => e.type)
+    for (const t of ['WELCOME_SHOWN', 'MUSIC_STOPPED', 'MUSIC_STARTED', 'VOLUME_SET']) assert.ok(types.includes(t), t)
+  })
+
+  it('uploads music in chunks, streams with Range, publishes it to paired screens', async () => {
+    // a fake 1.2 MB "MP3": ID3 header + bytes → 3 chunks of 512 KB
+    const bytes = Buffer.alloc(1_200_000)
+    bytes.write('ID3', 0)
+    for (let i = 3; i < bytes.length; i++) bytes[i] = i % 251
+    assert.equal((await op1('POST', '/media/upload/start', { name: 'x.mp3', size: bytes.length, mime: 'audio/mpeg' })).status, 403)
+    assert.equal((await admin('POST', '/media/upload/start', { name: 'x.exe', size: 10, mime: 'application/octet-stream' })).status, 422)
+    const st = (await admin('POST', '/media/upload/start', { name: 'Hello.mp3', size: bytes.length, mime: 'audio/mpeg' })).json
+    const n = Math.ceil(bytes.length / st.chunkSize)
+    assert.equal(n, 3)
+    for (let i = 0; i < n; i++) {
+      const data = bytes.subarray(i * st.chunkSize, (i + 1) * st.chunkSize).toString('base64')
+      const r = await admin('POST', '/media/upload/chunk', { uploadId: st.uploadId, index: i, data })
+      assert.equal(r.status, 200, JSON.stringify(r.json))
+      if (i === 1) assert.equal((await admin('POST', '/media/upload/chunk', { uploadId: st.uploadId, index: 1, data })).status, 200) // retry is fine
+    }
+    const file = (await admin('POST', '/media/upload/finish', { uploadId: st.uploadId })).json
+    assert.equal(file.size, bytes.length)
+    assert.equal(file.name, 'Hello.mp3')
+
+    // full + ranged download
+    const full = await fetch(BASE + file.url)
+    assert.equal(full.status, 200)
+    assert.equal(full.headers.get('accept-ranges'), 'bytes')
+    assert.ok(Buffer.from(await full.arrayBuffer()).equals(bytes))
+    const part = await fetch(BASE + file.url, { headers: { Range: 'bytes=1000-1099' } })
+    assert.equal(part.status, 206)
+    assert.equal(part.headers.get('content-range'), `bytes 1000-1099/${bytes.length}`)
+    assert.ok(Buffer.from(await part.arrayBuffer()).equals(bytes.subarray(1000, 1100)))
+
+    // non-audio content is rejected at finish
+    const bad = (await admin('POST', '/media/upload/start', { name: 'fake.mp3', size: 4, mime: 'audio/mpeg' })).json
+    await admin('POST', '/media/upload/chunk', { uploadId: bad.uploadId, index: 0, data: Buffer.from('<?ph').toString('base64') })
+    assert.equal((await admin('POST', '/media/upload/finish', { uploadId: bad.uploadId })).status, 422)
+
+    // settings: admin only; welcome music used everywhere
+    assert.equal((await op1('POST', '/media/settings', { welcomeMusic: file.id })).status, 403)
+    const set = await admin('POST', '/media/settings', { welcomeMusic: file.id, pauseMusic: file.id })
+    assert.equal(set.status, 200, JSON.stringify(set.json))
+    assert.equal(set.json.welcomeMusic.id, file.id)
+    assert.equal((await op1('GET', '/media/settings')).json.pauseMusic.url, file.url)
+
+    // a paired screen gets the URLs and reports what its speakers do
+    const req = (await anon('POST', '/display/pairing', {})).json
+    await admin('POST', '/pairing/approve', { code: req.code, sessionId: sid, label: 'Media screen' })
+    const tok = (await anon('GET', `/display/pairing/${req.pairingId}`)).json.token
+    const disp = client()
+    const H = { 'X-Display-Token': tok }
+    const pub = (await disp('GET', '/display/state', undefined, H)).json
+    assert.equal(pub.media.welcomeMusic, file.url)
+    assert.equal(pub.media.welcomeImage, null)
+    const hb = await disp('POST', '/display/heartbeat', { appliedVersion: pub.stateVersion, audio: 'blocked' }, H)
+    assert.equal(hb.json.media.pauseMusic, file.url)
+    const dev = (await admin('GET', `/sessions/${sid}/view`)).json.devices.find((d) => d.label === 'Media screen')
+    assert.equal(dev.audioStatus, 'blocked')
+  })
+})

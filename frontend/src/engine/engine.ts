@@ -5,7 +5,7 @@
  * shared contract.
  */
 import type { AuctionEvent, AuctionState, Bid, Command, EventType, StateSnapshot } from './types'
-import { ApiError } from './types'
+import { ApiError, DEFAULT_VOLUME } from './types'
 
 export interface CommandContext {
   operatorId: string
@@ -42,6 +42,9 @@ export function initialState(sessionId: string, now: string): AuctionState {
     eventSeq: 0,
     updatedAt: now,
     overlayHidden: false,
+    welcomeOn: false,
+    musicOn: false,
+    volume: DEFAULT_VOLUME,
   }
 }
 
@@ -75,6 +78,9 @@ export function allowedCommands(s: AuctionState): Set<Command['type']> {
   if ((s.sessionStatus === 'LIVE' || s.sessionStatus === 'PAUSED') && s.saleStatus === 'ON_THE_MARKET') a.add('OFF_MARKET')
   if (s.sessionStatus !== 'NOT_STARTED') a.add('SET_OVERLAY')
   if (s.sessionStatus === 'ENDED') a.add('REOPEN')
+  a.add('SET_WELCOME')
+  a.add('SET_MUSIC')
+  a.add('SET_VOLUME')
   if ((s.sessionStatus === 'LIVE' || s.sessionStatus === 'PAUSED') && saleOpen(s)) {
     if (s.bidCount > 0) a.add('SOLD')
     a.add('PASSED_IN')
@@ -165,6 +171,28 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
       next.sessionStatus = 'ENDED'
       type = 'AUCTION_ENDED'
       break
+
+    case 'SET_WELCOME':
+      if (!!state.welcomeOn === !!cmd.on) throw transition(cmd.on ? 'Welcome screen is already on' : 'Welcome screen is already off')
+      next.welcomeOn = !!cmd.on
+      type = cmd.on ? 'WELCOME_SHOWN' : 'WELCOME_HIDDEN'
+      break
+
+    case 'SET_MUSIC':
+      if (!!state.musicOn === !!cmd.on) throw transition(cmd.on ? 'Music is already playing' : 'Music is already off')
+      next.musicOn = !!cmd.on
+      type = cmd.on ? 'MUSIC_STARTED' : 'MUSIC_STOPPED'
+      break
+
+    case 'SET_VOLUME': {
+      const v = Math.round(Number(cmd.percent))
+      if (!Number.isFinite(v) || v < 0 || v > 100) throw new ApiError('VALIDATION_FAILED', 'Volume must be 0–100', 422)
+      if (v === (state.volume ?? DEFAULT_VOLUME)) throw transition('Volume unchanged')
+      next.volume = v
+      type = 'VOLUME_SET'
+      data = { volume: v }
+      break
+    }
 
     case 'REOPEN': {
       // Undo Sold / Passed in / End: back to exactly where the auction was. Bids are untouched.
@@ -261,6 +289,14 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
   if (cmd.type !== 'SET_OVERLAY') {
     next.overlayHidden =
       next.sessionStatus !== state.sessionStatus || next.saleStatus !== state.saleStatus ? false : !!state.overlayHidden
+  }
+  // Room media follows the auction: START closes the welcome screen; PAUSE starts the music,
+  // leaving PAUSED (resume, sold, passed in, end) stops it. The buttons can still override.
+  if (cmd.type === 'START') next.welcomeOn = false
+  if (cmd.type !== 'SET_MUSIC') {
+    if (next.sessionStatus === 'PAUSED' && state.sessionStatus !== 'PAUSED') next.musicOn = true
+    else if (state.sessionStatus === 'PAUSED' && next.sessionStatus !== 'PAUSED') next.musicOn = false
+    else if (next.sessionStatus === 'ENDED' && state.sessionStatus !== 'ENDED') next.musicOn = false
   }
   next.stateVersion = state.stateVersion + 1
   next.eventSeq = state.eventSeq + 1

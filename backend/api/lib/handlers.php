@@ -62,6 +62,7 @@ function device_row(array $d): array
         'lastHeartbeatAt' => $d['last_heartbeat_at'],
         'lastAckedVersion' => (int) $d['last_acked_version'],
         'lastAckedAt' => $d['last_acked_at'],
+        'audioStatus' => $d['audio_status'] ?? null,
     ];
 }
 
@@ -627,8 +628,10 @@ function h_display_heartbeat(): array
     $b = body();
     $applied = (int) ($b['appliedVersion'] ?? -1);
     $knownSession = (string) ($b['sessionId'] ?? '');
-    q('UPDATE auction_devices SET last_heartbeat_at = ?, last_acked_version = CASE WHEN last_acked_version < ? THEN ? ELSE last_acked_version END WHERE id = ?',
-        [iso(), $applied, $applied, $d['id']]);
+    $audio = in_array($b['audio'] ?? null, ['off', 'loading', 'playing', 'blocked', 'error'], true) ? $b['audio'] : null;
+    q('UPDATE auction_devices SET last_heartbeat_at = ?, audio_status = COALESCE(?, audio_status),
+        last_acked_version = CASE WHEN last_acked_version < ? THEN ? ELSE last_acked_version END WHERE id = ?',
+        [iso(), $audio, $applied, $applied, $d['id']]);
     $waitMs = !empty($b['wait']) ? max(0, min(8000, (int) (cfg()['display_wait_ms'] ?? 3500))) : 0;
     $deadline = now_ms() + $waitMs;
     if ($waitMs > 0) {
@@ -642,7 +645,7 @@ function h_display_heartbeat(): array
         $v = (int) $r['state_version'];
         $changed = $v !== $applied || ($knownSession !== '' && $knownSession !== $r['session_id']);
         if ($changed || now_ms() >= $deadline || connection_aborted()) {
-            return ['serverVersion' => $v, 'sessionId' => $r['session_id']];
+            return ['serverVersion' => $v, 'sessionId' => $r['session_id'], 'media' => room_media_public()];
         }
         usleep(200_000);
     }

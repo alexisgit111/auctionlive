@@ -54,7 +54,7 @@ function require_admin(): array
 /** Simple CSRF guard: browsers cannot add custom headers cross-site without a CORS preflight, which we never allow. */
 function require_api_header(): void
 {
-    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') return;
+    if (in_array($_SERVER['REQUEST_METHOD'] ?? 'GET', ['GET', 'HEAD'], true)) return;
     if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') !== 'auction-live')
         throw new ApiError('FORBIDDEN', 'Missing request header', 403);
 }

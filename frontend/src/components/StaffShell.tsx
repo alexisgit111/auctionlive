@@ -31,6 +31,7 @@ export function StaffShell() {
     { to: '/auction/control', label: 'Console' },
     { to: '/auction/sessions', label: 'Sessions' },
     { to: '/auction/reports', label: 'Reports' },
+    ...(user.role === 'admin' ? [{ to: '/auction/media', label: 'Media' }] : []),
     ...(user.role === 'admin' && BACKEND === 'http' ? [{ to: '/auction/users', label: 'Users' }] : []),
   ]
 

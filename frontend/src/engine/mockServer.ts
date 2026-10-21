@@ -12,6 +12,7 @@
 import { formatCents } from '../lib/money'
 import { pairingCode, sha256, ulid, uuid } from '../lib/ids'
 import type { Bus } from './bus'
+import type { MediaFile, MediaSettingsView } from './api'
 import { applyCommand, initialState, snapshot } from './engine'
 import { readFaults, type Faults } from './faults'
 import { toPublicState } from './publicState'
@@ -22,8 +23,10 @@ import {
   type AuctionState,
   type Bid,
   type Command,
+  type AudioStatus,
   type Device,
   type DeviceSummary,
+  type RoomMedia,
   type EventType,
   type OperatorLease,
   type Pairing,
@@ -70,7 +73,15 @@ export interface Db {
   idempotency: Record<string, IdemRecord>
   outbox: OutboxRow[]
   outboxSeq: number
+  /** Room media (prototype: files live in this browser's IndexedDB as idb-image: refs) */
+  media?: { welcomeImage: string | null; welcomeMusic: MediaFile | null; pauseMusic: MediaFile | null }
 }
+
+const roomMedia = (db: Db): RoomMedia => ({
+  welcomeImage: db.media?.welcomeImage ?? null,
+  welcomeMusic: db.media?.welcomeMusic?.url ?? null,
+  pauseMusic: db.media?.pauseMusic?.url ?? null,
+})
 
 export interface ExecuteResponse {
   state: AuctionState
@@ -117,6 +128,8 @@ export interface ServerDeps {
   now?: () => number
   sleep?: (ms: number) => Promise<void>
   random?: () => number
+  /** Where uploaded room media goes (prototype: IndexedDB). Returns a reference the display can resolve. */
+  storeBlob?: (dataUrl: string) => Promise<string>
 }
 
 export type MockServer = ReturnType<typeof createMockServer>
@@ -268,7 +281,7 @@ export function createMockServer(deps: ServerDeps) {
       id: db.outboxSeq,
       sessionId,
       version: st.stateVersion,
-      payload: toPublicState(db.sessions[sessionId], st, iso()),
+      payload: toPublicState(db.sessions[sessionId], st, iso(), roomMedia(db)),
       createdAt: iso(),
       publishedAt: null,
       attempts: 0,
@@ -376,7 +389,7 @@ export function createMockServer(deps: ServerDeps) {
   const staff = {
     async health() {
       await staffNet()
-      return { ok: true, serverNow: iso(), apiVersion: 3 }
+      return { ok: true, serverNow: iso(), apiVersion: 4 }
     },
 
     async listSessions(): Promise<SessionSummary[]> {
@@ -779,21 +792,26 @@ export function createMockServer(deps: ServerDeps) {
       await displayNet()
       const db = read()
       const d = await authDevice(db, token)
-      return toPublicState(db.sessions[d.sessionId], db.states[d.sessionId], iso())
+      return toPublicState(db.sessions[d.sessionId], db.states[d.sessionId], iso(), roomMedia(db))
     },
 
     async heartbeat(
       token: string | null,
       appliedVersion: number,
-      _opts?: { wait?: boolean; sessionId?: string },
-    ): Promise<{ serverVersion: number; sessionId: string }> {
+      opts?: { wait?: boolean; sessionId?: string; audio?: AudioStatus },
+    ): Promise<{ serverVersion: number; sessionId: string; media: RoomMedia }> {
       await displayNet()
-      return tx(async (db) => {
+      const r = await tx(async (db) => {
         const d = await authDevice(db, token)
-        db.devices[d.id].lastHeartbeatAt = iso()
-        db.devices[d.id].lastAckedVersion = Math.max(db.devices[d.id].lastAckedVersion, appliedVersion)
-        return { serverVersion: db.states[d.sessionId].stateVersion, sessionId: d.sessionId }
+        const dev = db.devices[d.id]
+        dev.lastHeartbeatAt = iso()
+        dev.lastAckedVersion = Math.max(dev.lastAckedVersion, appliedVersion)
+        const audioChanged = !!opts?.audio && dev.audioStatus !== opts.audio
+        if (opts?.audio) dev.audioStatus = opts.audio
+        return { serverVersion: db.states[d.sessionId].stateVersion, sessionId: d.sessionId, media: roomMedia(db), audioChanged }
       })
+      if (r.audioChanged) notifyStaff(r.sessionId)
+      return { serverVersion: r.serverVersion, sessionId: r.sessionId, media: r.media }
     },
 
     async ack(token: string | null, version: number) {
@@ -841,7 +859,50 @@ export function createMockServer(deps: ServerDeps) {
     kv.set(DB_KEY, JSON.stringify(emptyDb()))
   }
 
-  return { staff, display, ensureSeed, read, migrateInlineImages, resetAll, publicFormat: formatCents }
+  // ─── room media (prototype) ───
+  const mediaView = (db: Db): MediaSettingsView => ({
+    welcomeImage: db.media?.welcomeImage ?? null,
+    welcomeMusic: db.media?.welcomeMusic ?? null,
+    pauseMusic: db.media?.pauseMusic ?? null,
+  })
+  const uploadedMusic = new Map<string, MediaFile>()
+  const media = {
+    async get(): Promise<MediaSettingsView> {
+      return mediaView(read())
+    },
+    async set(patch: { welcomeImage?: string | null; welcomeMusic?: string | null; pauseMusic?: string | null }): Promise<MediaSettingsView> {
+      const pick = (id: string | null | undefined, cur: MediaFile | null) =>
+        id === undefined ? cur : id === null ? null : (uploadedMusic.get(id) ?? (cur?.id === id ? cur : null))
+      const v = await tx((db) => {
+        const cur = mediaView(db)
+        db.media = {
+          welcomeImage: patch.welcomeImage === undefined ? cur.welcomeImage : patch.welcomeImage,
+          welcomeMusic: pick(patch.welcomeMusic, cur.welcomeMusic),
+          pauseMusic: pick(patch.pauseMusic, cur.pauseMusic),
+        }
+        return mediaView(db)
+      })
+      for (const sid of Object.keys(read().sessions)) bus.publish({ type: 'display.resync', sessionId: sid })
+      return v
+    },
+    async uploadMusic(file: File, onProgress?: (f: number) => void): Promise<MediaFile> {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const fr = new FileReader()
+        fr.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total)
+        fr.onload = () => resolve(String(fr.result))
+        fr.onerror = () => reject(fr.error)
+        fr.readAsDataURL(file)
+      })
+      if (!deps.storeBlob) throw new ApiError('VALIDATION_FAILED', 'Media storage is not available', 503)
+      const ref = await deps.storeBlob(dataUrl)
+      const f: MediaFile = { id: ref, url: ref, name: file.name, size: file.size }
+      uploadedMusic.set(ref, f)
+      onProgress?.(1)
+      return f
+    },
+  }
+
+  return { staff, display, media, ensureSeed, read, migrateInlineImages, resetAll, publicFormat: formatCents }
 }
 
 function validateSessionInput(i: SessionInput) {
