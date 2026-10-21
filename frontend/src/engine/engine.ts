@@ -74,6 +74,7 @@ export function allowedCommands(s: AuctionState): Set<Command['type']> {
   if (s.sessionStatus === 'PAUSED') a.add('RESUME')
   if ((s.sessionStatus === 'LIVE' || s.sessionStatus === 'PAUSED') && s.saleStatus === 'ON_THE_MARKET') a.add('OFF_MARKET')
   if (s.sessionStatus !== 'NOT_STARTED') a.add('SET_OVERLAY')
+  if (s.sessionStatus === 'ENDED') a.add('REOPEN')
   if ((s.sessionStatus === 'LIVE' || s.sessionStatus === 'PAUSED') && saleOpen(s)) {
     if (s.bidCount > 0) a.add('SOLD')
     a.add('PASSED_IN')
@@ -141,6 +142,7 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
       if (state.sessionStatus !== 'LIVE' && state.sessionStatus !== 'PAUSED') throw transition('Auction is not running')
       if (!saleOpen(state)) throw transition('Sale is already concluded')
       if (state.bidCount === 0 || !state.currentBidCents) throw transition('Cannot mark sold without an accepted bid')
+      next.concludedFrom = { sessionStatus: state.sessionStatus, saleStatus: state.saleStatus }
       next.saleStatus = 'SOLD'
       next.sessionStatus = 'ENDED'
       type = 'SOLD'
@@ -150,6 +152,7 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
     case 'PASSED_IN':
       if (state.sessionStatus !== 'LIVE' && state.sessionStatus !== 'PAUSED') throw transition('Auction is not running')
       if (!saleOpen(state)) throw transition('Sale is already concluded')
+      next.concludedFrom = { sessionStatus: state.sessionStatus, saleStatus: state.saleStatus }
       next.saleStatus = 'PASSED_IN'
       next.sessionStatus = 'ENDED'
       type = 'PASSED_IN'
@@ -158,9 +161,24 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
 
     case 'END':
       if (state.sessionStatus !== 'LIVE' && state.sessionStatus !== 'PAUSED') throw transition('Auction is not running')
+      next.concludedFrom = { sessionStatus: state.sessionStatus, saleStatus: state.saleStatus }
       next.sessionStatus = 'ENDED'
       type = 'AUCTION_ENDED'
       break
+
+    case 'REOPEN': {
+      // Undo Sold / Passed in / End: back to exactly where the auction was. Bids are untouched.
+      if (state.sessionStatus !== 'ENDED') throw transition('Auction has not ended')
+      if (!cmd.reason?.trim()) throw new ApiError('VALIDATION_FAILED', 'A reason is required to reopen the auction', 422)
+      const back = state.concludedFrom ?? { sessionStatus: 'PAUSED' as const, saleStatus: 'NONE' as const }
+      next.sessionStatus = back.sessionStatus === 'LIVE' || back.sessionStatus === 'PAUSED' ? back.sessionStatus : 'PAUSED'
+      next.saleStatus = back.saleStatus === 'ON_THE_MARKET' ? 'ON_THE_MARKET' : 'NONE'
+      next.concludedFrom = null
+      type = 'REOPENED'
+      reason = cmd.reason.trim()
+      data = { fromSaleStatus: state.saleStatus }
+      break
+    }
 
     case 'BID': {
       if (state.sessionStatus !== 'LIVE') throw transition('Bids can only be entered while the auction is live')
@@ -215,10 +233,7 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
       if (amount % 100n !== 0n) throw new ApiError('INVALID_AMOUNT', 'Bids must be whole dollars', 400)
       if (amount.toString() === state.currentBidCents)
         throw new ApiError('VALIDATION_FAILED', 'Corrected amount is the same as the original', 422)
-      const others = activeBids(bids).filter((b) => b.id !== cmd.bidId)
-      const below = others[others.length - 1]
-      if (below && amount <= BigInt(below.amountCents))
-        throw new ApiError('BID_NOT_HIGHER', 'Corrected bid must be higher than the previous accepted bid', 409)
+      // Any amount is allowed (higher or lower) — the original stays in the record as CORRECTED.
       const original = bids.find((b) => b.id === cmd.bidId)!
       const seq = bids.reduce((m, b) => Math.max(m, b.seq), 0) + 1
       newBid = {

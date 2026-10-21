@@ -29,9 +29,16 @@ describe('phone calculator entry', () => {
 
   it('rejects + before the first bid, lower SET amounts and bad input', () => {
     expect(computeTarget('ADD', '1K', null, $(10_000)).ok).toBe(false)
-    expect(computeTarget('SET', '1M', $(1_125_000), $(10_000)).ok).toBe(false)
+    expect(computeTarget('SET', '1.125M', $(1_125_000), $(10_000)).ok).toBe(false)
     expect(computeTarget('SET', '', $(1_000_000), $(10_000)).ok).toBe(false)
     expect(computeTarget('ADD', '1.2345K', $(1_000_000), $(10_000)).ok).toBe(false)
+  })
+
+  it('SET below the current bid becomes a correction of the last bid', () => {
+    const r = ok(computeTarget('SET', '1.1M', $(1_125_000), $(10_000)))
+    expect(r.kind).toBe('CORRECT')
+    expect(r.target).toBe($(1_100_000))
+    expect(ok(computeTarget('SET', '1.2M', $(1_125_000), $(10_000))).kind).toBe('BID')
   })
 
   it('warns about likely slips (missing K, very big jump)', () => {

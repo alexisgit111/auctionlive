@@ -136,6 +136,7 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
             if (!$running) throw eng_transition('Auction is not running');
             if (!eng_sale_open($state)) throw eng_transition('Sale is already concluded');
             if ($state['bidCount'] === 0 || !$state['currentBidCents']) throw eng_transition('Cannot mark sold without an accepted bid');
+            $next['concludedFrom'] = ['sessionStatus' => $state['sessionStatus'], 'saleStatus' => $state['saleStatus']];
             $next['saleStatus'] = 'SOLD';
             $next['sessionStatus'] = 'ENDED';
             $evType = 'SOLD';
@@ -145,6 +146,7 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
         case 'PASSED_IN':
             if (!$running) throw eng_transition('Auction is not running');
             if (!eng_sale_open($state)) throw eng_transition('Sale is already concluded');
+            $next['concludedFrom'] = ['sessionStatus' => $state['sessionStatus'], 'saleStatus' => $state['saleStatus']];
             $next['saleStatus'] = 'PASSED_IN';
             $next['sessionStatus'] = 'ENDED';
             $evType = 'PASSED_IN';
@@ -153,8 +155,22 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
 
         case 'END':
             if (!$running) throw eng_transition('Auction is not running');
+            $next['concludedFrom'] = ['sessionStatus' => $state['sessionStatus'], 'saleStatus' => $state['saleStatus']];
             $next['sessionStatus'] = 'ENDED';
             $evType = 'AUCTION_ENDED';
+            break;
+
+        case 'REOPEN':
+            // Undo Sold / Passed in / End: back to exactly where the auction was. Bids are untouched.
+            if ($state['sessionStatus'] !== 'ENDED') throw eng_transition('Auction has not ended');
+            $reason = trim((string) ($cmd['reason'] ?? ''));
+            if ($reason === '') throw new ApiError('VALIDATION_FAILED', 'A reason is required to reopen the auction', 422);
+            $back = $state['concludedFrom'] ?? ['sessionStatus' => 'PAUSED', 'saleStatus' => 'NONE'];
+            $next['sessionStatus'] = in_array($back['sessionStatus'] ?? '', ['LIVE', 'PAUSED'], true) ? $back['sessionStatus'] : 'PAUSED';
+            $next['saleStatus'] = ($back['saleStatus'] ?? '') === 'ON_THE_MARKET' ? 'ON_THE_MARKET' : 'NONE';
+            $next['concludedFrom'] = null;
+            $evType = 'REOPENED';
+            $data = ['fromSaleStatus' => $state['saleStatus']];
             break;
 
         case 'BID':
@@ -204,10 +220,7 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
             $amount = eng_amount((string) ($cmd['amountCents'] ?? ''));
             if ((string) $amount === $state['currentBidCents'])
                 throw new ApiError('VALIDATION_FAILED', 'Corrected amount is the same as the original', 422);
-            $others = array_values(array_filter(eng_active_bids($bids), fn($b) => $b['id'] !== $cmd['bidId']));
-            $below = $others ? $others[count($others) - 1] : null;
-            if ($below && $amount <= (int) $below['amountCents'])
-                throw new ApiError('BID_NOT_HIGHER', 'Corrected bid must be higher than the previous accepted bid', 409);
+            // Any amount is allowed (higher or lower) — the original stays in the record as CORRECTED.
             $original = null;
             foreach ($bids as &$b) {
                 if ($b['id'] === $cmd['bidId']) {

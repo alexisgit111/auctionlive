@@ -168,6 +168,26 @@ describe('bidding', () => {
     const types = (await admin('GET', `/sessions/${sid}/events`)).json.map((e) => e.type)
     for (const t of ['OFF_THE_MARKET', 'OVERLAY_HIDDEN']) assert.ok(types.includes(t), t)
   })
+
+  it('a bid can be corrected to any amount; SOLD can be undone (reopen)', async () => {
+    let v = (await admin('GET', `/sessions/${sid}/view`)).json.state
+    const low = await exec(admin, { type: 'CORRECT', bidId: v.currentBidId, amountCents: K(905), reason: 'Misheard' })
+    assert.equal(low.status, 200, JSON.stringify(low.json))
+    assert.equal(low.json.state.currentBidCents, K(905))
+    assert.equal((await exec(admin, { type: 'BID', amountCents: K(905) })).status, 409)
+    assert.equal((await exec(admin, { type: 'BID', amountCents: K(910) })).status, 200)
+
+    assert.equal((await exec(admin, { type: 'SOLD' })).json.state.saleStatus, 'SOLD')
+    assert.equal((await exec(admin, { type: 'REOPEN', reason: '' })).status, 422)
+    const re = await exec(admin, { type: 'REOPEN', reason: 'Pressed by mistake' })
+    assert.equal(re.status, 200, JSON.stringify(re.json))
+    assert.equal(re.json.state.sessionStatus, 'LIVE')
+    assert.equal(re.json.state.saleStatus, 'ON_THE_MARKET')
+    assert.equal(re.json.state.currentBidCents, K(910))
+    assert.equal((await exec(admin, { type: 'REOPEN', reason: 'again' })).status, 409)
+    const ev = (await admin('GET', `/sessions/${sid}/events`)).json.find((e) => e.type === 'REOPENED')
+    assert.equal(ev.reason, 'Pressed by mistake')
+  })
 })
 
 describe('room display', () => {

@@ -41,10 +41,14 @@ interface Props {
   submitBid: (cents: Cents) => Promise<boolean>
   dialog: Dialog
   setDialog: (d: Dialog) => void
+  correctInitial?: string
+  /** Open "Correct last bid" pre-filled with this amount */
+  onCorrect: (cents: Cents) => void
 }
 
 interface Armed {
   key: string
+  kind: 'BID' | 'CORRECT'
   target: Cents
   increment: Cents | null
   warning: string | null
@@ -98,6 +102,12 @@ export function MobileConsole(p: Props) {
 
   const op = async (keyId: string, compute: () => CalcResult) => {
     if (!keysOn || sending) return
+    if (armed?.key === keyId && armed.kind === 'CORRECT') {
+      setArmed(null)
+      setInput('')
+      p.onCorrect(armed.target)
+      return
+    }
     if (armed?.key === keyId) {
       setSending(true)
       const ok = await p.submitBid(armed.target)
@@ -117,8 +127,12 @@ export function MobileConsole(p: Props) {
       buzz([20, 40, 20])
       return
     }
+    if (r.kind === 'CORRECT' && !allowed.has('CORRECT')) {
+      setMsg('Lower than the current bid — nothing to correct right now')
+      return
+    }
     setMsg(null)
-    setArmed({ key: keyId, target: r.target, increment: r.increment, warning: r.warning })
+    setArmed({ key: keyId, kind: r.kind, target: r.target, increment: r.increment, warning: r.warning })
     buzz(10)
   }
 
@@ -195,7 +209,7 @@ export function MobileConsole(p: Props) {
 
         <div
           className={`mt-3 flex min-h-[64px] items-center gap-3 rounded-lg px-3 py-2 ${
-            armed ? 'bg-ok/90' : msg ? 'bg-bad/80' : 'bg-navy-700'
+            armed?.kind === 'CORRECT' ? 'bg-warn' : armed ? 'bg-ok/90' : msg ? 'bg-bad/80' : 'bg-navy-700'
           }`}
           aria-live="polite"
         >
@@ -203,12 +217,16 @@ export function MobileConsole(p: Props) {
             {armed ? (
               <>
                 <div className="font-semibold text-white/85">
-                  {armed.increment !== null ? `+${formatCents(armed.increment)} → ` : 'Opening bid → '}
+                  {armed.kind === 'CORRECT'
+                    ? `Correct last bid ${formatCents(s.currentBidCents)} → `
+                    : armed.increment !== null
+                      ? `+${formatCents(armed.increment)} → `
+                      : 'Opening bid → '}
                 </div>
                 <div className="text-2xl font-bold tabular-nums" data-testid="mobile-preview">
                   {formatCents(armed.target)}
                 </div>
-                {armed.warning && <div className="mt-0.5 font-bold text-amber-200">{armed.warning}</div>}
+                {armed.warning && armed.kind !== 'CORRECT' && <div className="mt-0.5 font-bold text-amber-200">{armed.warning}</div>}
               </>
             ) : msg ? (
               <span className="font-semibold">{msg}</span>
@@ -225,7 +243,11 @@ export function MobileConsole(p: Props) {
             {input || <span className="text-white/20">0</span>}
           </div>
         </div>
-        {armed && <div className="mt-1 text-center text-[11px] font-semibold text-white/70">Tap the green key again to send · any digit to cancel</div>}
+        {armed && (
+          <div className="mt-1 text-center text-[11px] font-semibold text-white/70">
+            {armed.kind === 'CORRECT' ? 'Tap SET again to correct (asks for a reason)' : 'Tap the green key again to send'} · any digit to cancel
+          </div>
+        )}
       </section>
 
       {/* ── control / status row ── */}
@@ -247,6 +269,10 @@ export function MobileConsole(p: Props) {
             <Act tone="brand" disabled={!can('START')} onClick={() => void p.run({ type: 'START' })} wide>
               Start auction
             </Act>
+          ) : s.sessionStatus === 'ENDED' ? (
+            <Act tone="navyOutline" disabled={!can('REOPEN')} onClick={() => p.setDialog('REOPEN')} wide>
+              {s.saleStatus === 'SOLD' ? 'Undo SOLD — reopen…' : s.saleStatus === 'PASSED_IN' ? 'Undo PASSED IN — reopen…' : 'Reopen auction…'}
+            </Act>
           ) : s.sessionStatus === 'PAUSED' ? (
             <Act tone="brand" disabled={!can('RESUME')} onClick={() => void p.run({ type: 'RESUME' })}>
               Resume
@@ -256,7 +282,7 @@ export function MobileConsole(p: Props) {
               Pause
             </Act>
           )}
-          {s.sessionStatus !== 'NOT_STARTED' && (
+          {s.sessionStatus !== 'NOT_STARTED' && s.sessionStatus !== 'ENDED' && (
             <>
               {s.saleStatus === 'ON_THE_MARKET' ? (
                 <Act tone="navyOutline" disabled={!can('OFF_MARKET')} onClick={() => void p.run({ type: 'OFF_MARKET' })}>
@@ -323,7 +349,16 @@ export function MobileConsole(p: Props) {
         <Key onClick={() => press('1')} disabled={!keysOn}>1</Key>
         <Key onClick={() => press('2')} disabled={!keysOn}>2</Key>
         <Key onClick={() => press('3')} disabled={!keysOn}>3</Key>
-        <OpKey armed={armed?.key === 'SET'} sending={sending && armed?.key === 'SET'} onClick={() => void set()} disabled={!keysOn} label="Set" testId="key-set" small>
+        <OpKey
+          armed={armed?.key === 'SET'}
+          correction={armed?.key === 'SET' && armed.kind === 'CORRECT'}
+          sending={sending && armed?.key === 'SET'}
+          onClick={() => void set()}
+          disabled={!keysOn}
+          label="Set"
+          testId="key-set"
+          small
+        >
           SET
         </OpKey>
         <Key onClick={() => press('0')} disabled={!keysOn}>0</Key>
@@ -343,7 +378,7 @@ export function MobileConsole(p: Props) {
         />
       )}
 
-      <AuctionDialogs view={p.view} pending={p.pending} run={p.run} dialog={p.dialog} setDialog={p.setDialog} />
+      <AuctionDialogs view={p.view} pending={p.pending} run={p.run} dialog={p.dialog} setDialog={p.setDialog} correctInitial={p.correctInitial} />
     </div>
   )
 }
@@ -386,11 +421,13 @@ function OpKey({
   onClick,
   disabled,
   armed,
+  correction = false,
   sending,
   label,
   testId,
   small = false,
 }: {
+  correction?: boolean
   children: ReactNode
   onClick: () => void
   disabled: boolean
@@ -405,7 +442,7 @@ function OpKey({
       aria-label={armed ? `${label} — confirm` : label}
       data-testid={testId}
       className={`row-span-2 flex flex-col items-center justify-center rounded-xl font-bold text-white shadow-[0_2px_0_rgba(0,29,74,0.2)] disabled:opacity-40 ${
-        armed ? 'bg-ok active:bg-green-700' : 'bg-brand active:bg-brand-600'
+        correction ? 'bg-warn' : armed ? 'bg-ok active:bg-green-700' : 'bg-brand active:bg-brand-600'
       }`}
       disabled={disabled}
       onClick={onClick}
@@ -413,7 +450,7 @@ function OpKey({
       {armed ? (
         <>
           <span className="text-[clamp(1.8rem,9vw,2.6rem)] leading-none">{sending ? '…' : '✓'}</span>
-          <span className="mt-1 text-xs font-bold uppercase tracking-[0.16em]">Send</span>
+          <span className="mt-1 text-xs font-bold uppercase tracking-[0.16em]">{correction ? 'Correct' : 'Send'}</span>
         </>
       ) : (
         <span className={small ? 'text-[clamp(1.2rem,6vw,1.6rem)] tracking-[0.08em]' : 'text-[clamp(2.2rem,11vw,3rem)] leading-none'}>{children}</span>

@@ -16,6 +16,8 @@ interface Props {
   onSubmit: (cents: Cents) => Promise<boolean>
   onUndoShortcut: () => void
   onPauseShortcut: () => void
+  /** Lower amount + Enter → open "Correct last bid" with it (undefined when correcting isn't allowed) */
+  onCorrect?: (cents: Cents) => void
 }
 
 const ALLOWED = /^[0-9.,kKmM ]*$/
@@ -33,7 +35,11 @@ export function BidEntry(p: Props) {
   const issue = useMemo(() => {
     if (!input.trim()) return null
     if (!parsed.ok) return parsed.message
-    if (p.currentCents !== null && parsed.cents <= p.currentCents) return `Must be higher than current bid ${formatCents(p.currentCents)}`
+    if (p.currentCents !== null && parsed.cents === p.currentCents) return `Already the current bid`
+    if (p.currentCents !== null && parsed.cents < p.currentCents)
+      return p.onCorrect
+        ? `Lower than ${formatCents(p.currentCents)} — press Enter to correct the last bid to ${formatCents(parsed.cents)}`
+        : `Must be higher than current bid ${formatCents(p.currentCents)}`
     return null
   }, [input, parsed, p.currentCents])
   const amount = parsed.ok && !issue ? parsed.cents : null
@@ -68,7 +74,16 @@ export function BidEntry(p: Props) {
     focus()
   }
 
+  const lowerForCorrect =
+    p.onCorrect && parsed.ok && p.currentCents !== null && parsed.cents < p.currentCents ? parsed.cents : null
+
   const onEnter = () => {
+    if (lowerForCorrect !== null && p.onCorrect) {
+      p.onCorrect(lowerForCorrect)
+      setInput('')
+      setStage('input')
+      return
+    }
     if (blocked) return
     if (stage === 'input') {
       if (amount !== null) setStage('confirm')
@@ -177,7 +192,7 @@ export function BidEntry(p: Props) {
             }`}
           >
             {issue ? (
-              <span className="text-base font-semibold text-bad">{issue}</span>
+              <span className={`text-base font-semibold ${lowerForCorrect !== null ? 'text-warn' : 'text-bad'}`}>{issue}</span>
             ) : amount !== null ? (
               <>
                 <div>
@@ -301,7 +316,7 @@ export function BidEntry(p: Props) {
         </div>
         <button
           className="btn-primary mt-2 h-[62px] w-full text-xl"
-          disabled={blocked || amount === null}
+          disabled={(blocked || amount === null) && lowerForCorrect === null}
           onClick={onEnter}
         >
           {stage === 'confirm' ? 'Confirm' : 'Enter'}

@@ -73,9 +73,11 @@ On a phone (screen narrower than 768 px) `/auction/control` turns into a calcula
 | `1.25M` | **SET** | preview $1,250,000 → press **SET** again to send |
 | (nothing) | **+** | current bid + the session's default increment |
 | | **+5K** chip | preview → tap the chip again to send |
+| a lower amount, e.g. `1.1M` | **SET** | "Correct last bid" → tap SET again, pick a reason (any amount, original kept as CORRECTED) |
 
 Any digit cancels a preview. Status buttons (Start / Pause / On market / Sold / Passed in) sit above the keypad;
-Undo, Correct, stickers, pairing a room screen and End are in the ☰ menu. "Phone layout" / "Switch to desktop
+Undo, Correct, stickers, pairing a room screen and End are in the ☰ menu. After Sold / Passed in, **Undo SOLD — reopen…**
+puts the auction back exactly where it was (reason recorded; all bids kept). "Phone layout" / "Switch to desktop
 layout" force either layout on any device. Add the page to the home screen to run it full screen.
 
 ## Brand

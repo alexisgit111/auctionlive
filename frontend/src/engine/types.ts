@@ -86,6 +86,8 @@ export interface AuctionState {
   updatedAt: string
   /** Operator hid the stickers (status circle + badge) on the room display. Missing = false. */
   overlayHidden?: boolean
+  /** Where the auction was just before Sold / Passed in / End — restored by REOPEN. */
+  concludedFrom?: { sessionStatus: SessionStatus; saleStatus: SaleStatus } | null
 }
 
 /** Compact state captured in audit events. */
@@ -103,6 +105,7 @@ export type EventType =
   | 'RESUMED'
   | 'ON_THE_MARKET'
   | 'OFF_THE_MARKET'
+  | 'REOPENED'
   | 'OVERLAY_HIDDEN'
   | 'OVERLAY_SHOWN'
   | 'SOLD'
@@ -136,6 +139,7 @@ export type Command =
   | { type: 'RESUME' }
   | { type: 'END' }
   | { type: 'OFF_MARKET' }
+  | { type: 'REOPEN'; reason: string }
   | { type: 'SET_OVERLAY'; hidden: boolean }
   | { type: 'ON_THE_MARKET' }
   | { type: 'SOLD' }

@@ -184,7 +184,8 @@ export async function buildAuctionReportPdf(r: ReportInput): Promise<{ blob: Blo
     let inc = ''
     if (b.status === 'ACTIVE') {
       const a = BigInt(b.amountCents)
-      inc = prevActive === null ? 'Opening' : `+${formatCents((a - prevActive).toString())}`
+      const d = prevActive === null ? null : a - prevActive
+      inc = d === null ? 'Opening' : d >= 0n ? `+${formatCents(d.toString())}` : `−${formatCents((-d).toString())}`
       prevActive = a
     }
     const status = b.status === 'ACTIVE' ? (b.supersedesBidId ? 'Accepted (correction)' : 'Accepted') : b.status === 'REVERSED' ? 'Undone' : 'Corrected'

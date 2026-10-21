@@ -104,11 +104,42 @@ describe('state machine', () => {
     expect(() => applyCommand(state, bids, { type: 'UNDO', bidId: first.id, reason: 'x' }, ctx())).toThrow(/latest/)
   })
 
-  it('correction supersedes the original and stays above the previous bid', () => {
+  it('correction can be any amount — even below the previous bid', () => {
     const { state, bids } = run([{ type: 'START' }, { type: 'BID', amountCents: K(1000) }, { type: 'BID', amountCents: K(1200) }])
+    const low = applyCommand(state, bids, { type: 'CORRECT', bidId: state.currentBidId!, amountCents: K(950), reason: 'misheard' }, ctx())
+    expect(low.state.currentBidCents).toBe(K(950))
     expect(() =>
-      applyCommand(state, bids, { type: 'CORRECT', bidId: state.currentBidId!, amountCents: K(1000), reason: 'typo' }, ctx()),
-    ).toThrow(/higher/)
+      applyCommand(state, bids, { type: 'CORRECT', bidId: state.currentBidId!, amountCents: K(1200), reason: 'same' }, ctx()),
+    ).toThrow(/same/)
+    // the next bid must beat the corrected amount
+    expect(() => applyCommand(low.state, low.bids, { type: 'BID', amountCents: K(950) }, ctx())).toThrow(/higher/)
+    expect(applyCommand(low.state, low.bids, { type: 'BID', amountCents: K(960) }, ctx()).state.currentBidCents).toBe(K(960))
+  })
+
+  it('reopen undoes SOLD / PASSED IN / END and restores where the auction was', () => {
+    const sold = run([{ type: 'START' }, { type: 'BID', amountCents: K(1000) }, { type: 'ON_THE_MARKET' }, { type: 'SOLD' }])
+    expect(allowedCommands(sold.state).has('REOPEN')).toBe(true)
+    expect(() => applyCommand(sold.state, sold.bids, { type: 'REOPEN', reason: ' ' }, ctx())).toThrow(/reason/)
+    const r = applyCommand(sold.state, sold.bids, { type: 'REOPEN', reason: 'Pressed by mistake' }, ctx())
+    expect(r.state.sessionStatus).toBe('LIVE')
+    expect(r.state.saleStatus).toBe('ON_THE_MARKET')
+    expect(r.state.currentBidCents).toBe(K(1000))
+    expect(r.events[0].type).toBe('REOPENED')
+    expect(r.events[0].reason).toBe('Pressed by mistake')
+    // bidding continues
+    expect(applyCommand(r.state, r.bids, { type: 'BID', amountCents: K(1010) }, ctx()).state.currentBidCents).toBe(K(1010))
+    // passed in while paused → back to paused
+    const pi = run([{ type: 'START' }, { type: 'PAUSE' }, { type: 'PASSED_IN' }])
+    const back = applyCommand(pi.state, pi.bids, { type: 'REOPEN', reason: 'x' }, ctx())
+    expect(back.state.sessionStatus).toBe('PAUSED')
+    expect(back.state.saleStatus).toBe('NONE')
+    // only after the auction has ended
+    const live = run([{ type: 'START' }])
+    expect(() => applyCommand(live.state, live.bids, { type: 'REOPEN', reason: 'x' }, ctx())).toThrow(/not ended/)
+  })
+
+  it('correction supersedes the original', () => {
+    const { state, bids } = run([{ type: 'START' }, { type: 'BID', amountCents: K(1000) }, { type: 'BID', amountCents: K(1200) }])
     const r = applyCommand(state, bids, { type: 'CORRECT', bidId: state.currentBidId!, amountCents: K(1020), reason: 'typo' }, ctx())
     expect(r.state.currentBidCents).toBe(K(1020))
     expect(r.bids).toHaveLength(3)

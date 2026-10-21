@@ -177,7 +177,7 @@ function StatusBadge({ kind, value }: { kind: 'session' | 'sale'; value: string 
 }
 
 // ───────────────────────── auction controls ─────────────────────────
-export type Dialog = null | 'SOLD' | 'PASSED_IN' | 'END' | 'UNDO' | 'CORRECT'
+export type Dialog = null | 'SOLD' | 'PASSED_IN' | 'END' | 'UNDO' | 'CORRECT' | 'REOPEN'
 
 export function AuctionControls({
   view,
@@ -186,6 +186,7 @@ export function AuctionControls({
   run,
   dialog,
   setDialog,
+  correctInitial,
 }: {
   view: StaffView
   enabled: boolean
@@ -193,6 +194,7 @@ export function AuctionControls({
   run: (cmd: Command) => Promise<boolean>
   dialog: Dialog
   setDialog: (d: Dialog) => void
+  correctInitial?: string
 }) {
   const allowed = allowedCommands(view.state)
   const can = (t: Command['type']) => enabled && !pending && allowed.has(t)
@@ -252,12 +254,17 @@ export function AuctionControls({
             {s.overlayHidden ? 'Show room display stickers' : 'Hide all room display stickers'}
           </button>
         )}
+        {s.sessionStatus === 'ENDED' && (
+          <button className="btn col-span-2 border-2 border-navy py-3 text-navy hover:bg-navy/5" disabled={!can('REOPEN')} onClick={() => setDialog('REOPEN')}>
+            {s.saleStatus === 'SOLD' ? 'Undo SOLD — reopen auction…' : s.saleStatus === 'PASSED_IN' ? 'Undo PASSED IN — reopen…' : 'Reopen auction…'}
+          </button>
+        )}
                 <button className="btn-ghost col-span-2 text-ink-muted" disabled={!can('END')} onClick={() => setDialog('END')}>
           End auction without result…
         </button>
       </div>
 
-      <AuctionDialogs view={view} pending={pending} run={run} dialog={dialog} setDialog={setDialog} />
+      <AuctionDialogs view={view} pending={pending} run={run} dialog={dialog} setDialog={setDialog} correctInitial={correctInitial} />
     </div>
   )
 }
@@ -269,12 +276,15 @@ export function AuctionDialogs({
   run,
   dialog,
   setDialog,
+  correctInitial,
 }: {
   view: StaffView
   pending: boolean
   run: (cmd: Command) => Promise<boolean>
   dialog: Dialog
   setDialog: (d: Dialog) => void
+  /** Pre-filled amount for "Correct last bid" (e.g. typed on the keypad) */
+  correctInitial?: string
 }) {
   const s = view.state
   return (
@@ -327,15 +337,31 @@ export function AuctionDialogs({
           title={`Undo bid ${formatCents(s.currentBidCents)}?`}
           note="The bid stays in the record, marked REVERSED. The previous bid becomes current."
           action="Undo bid"
+          reasons={['Misheard', 'Wrong bidder', 'Entered twice', 'Bid withdrawn']}
           onCancel={() => setDialog(null)}
           onConfirm={async (reason) => {
             if (await run({ type: 'UNDO', bidId: s.currentBidId!, reason })) setDialog(null)
           }}
         />
       )}
+      {dialog === 'REOPEN' && (
+        <ReasonDialog
+          title={s.saleStatus === 'SOLD' ? 'Undo SOLD and reopen the auction?' : s.saleStatus === 'PASSED_IN' ? 'Undo PASSED IN and reopen?' : 'Reopen the auction?'}
+          note={`The auction goes back to ${
+            s.concludedFrom?.saleStatus === 'ON_THE_MARKET' ? 'on the market' : (s.concludedFrom?.sessionStatus ?? 'paused').toLowerCase()
+          } with the current bid ${formatCents(s.currentBidCents)}. All bids stay in the record; this is recorded in the audit trail.`}
+          action="Reopen auction"
+          reasons={['Pressed by mistake', 'Bidding continues', 'Vendor negotiation — back on']}
+          onCancel={() => setDialog(null)}
+          onConfirm={async (reason) => {
+            if (await run({ type: 'REOPEN', reason })) setDialog(null)
+          }}
+        />
+      )}
       {dialog === 'CORRECT' && s.currentBidId && (
         <CorrectDialog
           current={s.currentBidCents!}
+          initial={correctInitial}
           onCancel={() => setDialog(null)}
           onConfirm={async (amountCents, reason) => {
             if (await run({ type: 'CORRECT', bidId: s.currentBidId!, amountCents, reason })) setDialog(null)
@@ -362,7 +388,32 @@ function ConfirmSimple(p: { title: string; body: string; action: string; danger?
   )
 }
 
-function ReasonDialog(p: { title: string; note: string; action: string; onCancel: () => void; onConfirm: (reason: string) => void }) {
+function ReasonChips({ reasons, value, onPick }: { reasons?: string[]; value: string; onPick: (r: string) => void }) {
+  if (!reasons?.length) return null
+  return (
+    <div className="mb-2 flex flex-wrap gap-1.5">
+      {reasons.map((r) => (
+        <button
+          key={r}
+          type="button"
+          className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${value === r ? 'border-navy bg-navy text-white' : 'border-line bg-white text-navy hover:bg-subtle'}`}
+          onClick={() => onPick(r)}
+        >
+          {r}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ReasonDialog(p: {
+  title: string
+  note: string
+  action: string
+  reasons?: string[]
+  onCancel: () => void
+  onConfirm: (reason: string) => void
+}) {
   const [reason, setReason] = useState('')
   return (
     <Modal title={p.title} tone="danger" onClose={p.onCancel}>
@@ -370,7 +421,8 @@ function ReasonDialog(p: { title: string; note: string; action: string; onCancel
       <label className="label" htmlFor="reason">
         Reason (required, recorded in audit trail)
       </label>
-      <textarea id="reason" className="field h-20" value={reason} onChange={(e) => setReason(e.target.value)} />
+      <ReasonChips reasons={p.reasons} value={reason} onPick={setReason} />
+      <textarea id="reason" className="field h-16" value={reason} onChange={(e) => setReason(e.target.value)} />
       <div className="mt-4 flex justify-end gap-2">
         <button className="btn-ghost" onClick={p.onCancel}>
           Cancel
@@ -383,10 +435,11 @@ function ReasonDialog(p: { title: string; note: string; action: string; onCancel
   )
 }
 
-function CorrectDialog(p: { current: string; onCancel: () => void; onConfirm: (amountCents: string, reason: string) => void }) {
-  const [amount, setAmount] = useState('')
+function CorrectDialog(p: { current: string; initial?: string; onCancel: () => void; onConfirm: (amountCents: string, reason: string) => void }) {
+  const [amount, setAmount] = useState(p.initial ?? '')
   const [reason, setReason] = useState('')
   const parsed = parseBidInput(amount)
+  const same = parsed.ok && parsed.cents.toString() === p.current
   return (
     <Modal title="Correct last bid" tone="danger" onClose={p.onCancel}>
       <p className="mb-3 text-sm text-ink-muted">
@@ -397,17 +450,28 @@ function CorrectDialog(p: { current: string; onCancel: () => void; onConfirm: (a
       </label>
       <input id="corr-amt" className="field text-2xl font-bold" value={amount} onChange={(e) => setAmount(e.target.value.toUpperCase())} placeholder="e.g. 1265K" />
       <div className="mt-1 h-5 text-sm">
-        {amount && (parsed.ok ? <span className="text-brand">{formatCents(parsed.cents)}</span> : <span className="text-bad">{parsed.message}</span>)}
+        {amount &&
+          (!parsed.ok ? (
+            <span className="text-bad">{parsed.message}</span>
+          ) : same ? (
+            <span className="text-bad">Same as the recorded amount</span>
+          ) : (
+            <span className="text-brand">
+              {formatCents(parsed.cents)}{' '}
+              <span className="text-ink-muted">({parsed.cents < BigInt(p.current) ? 'lower' : 'higher'} than recorded)</span>
+            </span>
+          ))}
       </div>
       <label className="label mt-2" htmlFor="corr-reason">
         Reason (required)
       </label>
-      <textarea id="corr-reason" className="field h-20" value={reason} onChange={(e) => setReason(e.target.value)} />
+      <ReasonChips reasons={['Misheard', 'Typo', 'Auctioneer corrected']} value={reason} onPick={setReason} />
+      <textarea id="corr-reason" className="field h-16" value={reason} onChange={(e) => setReason(e.target.value)} />
       <div className="mt-4 flex justify-end gap-2">
         <button className="btn-ghost" onClick={p.onCancel}>
           Cancel
         </button>
-        <button className="btn-danger" disabled={!parsed.ok || !reason.trim()} onClick={() => parsed.ok && p.onConfirm(parsed.cents.toString(), reason)}>
+        <button className="btn-danger" disabled={!parsed.ok || same || !reason.trim()} onClick={() => parsed.ok && p.onConfirm(parsed.cents.toString(), reason)}>
           Record correction
         </button>
       </div>

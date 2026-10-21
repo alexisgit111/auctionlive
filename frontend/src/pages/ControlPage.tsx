@@ -8,6 +8,7 @@ import { BidEntry } from '../components/console/BidEntry'
 import { MobileConsole } from '../components/console/MobileConsole'
 import {
   AuctionControls,
+  type Dialog,
   BidHistory,
   CurrentBidCard,
   DisplayPanel,
@@ -21,7 +22,7 @@ import { API_VERSION } from '../engine/api'
 import { allowedCommands } from '../engine/engine'
 import { anyFaultActive } from '../engine/faults'
 import type { Command } from '../engine/types'
-import type { Cents } from '../lib/money'
+import { formatCompact, type Cents } from '../lib/money'
 import { setWorkerInterval } from '../lib/workerTimer'
 import { addOfflineRecord, listOfflineRecords, type OfflineRecord } from '../lib/offlineStore'
 
@@ -58,7 +59,17 @@ export function ControlPage() {
   const view = viewQ.data
   const lease = useOperatorLease(sessionId, user, view?.lease)
   const runner = useCommandRunner(sessionId, user, lease.token)
-  const [dialog, setDialog] = useState<null | 'SOLD' | 'PASSED_IN' | 'END' | 'UNDO' | 'CORRECT'>(null)
+  const [dialog, setDialogRaw] = useState<Dialog>(null)
+  const [correctInitial, setCorrectInitial] = useState<string | undefined>(undefined)
+  const setDialog = (d: Dialog) => {
+    setCorrectInitial(undefined)
+    setDialogRaw(d)
+  }
+  /** A typed amount lower than the current bid → "Correct last bid" with that amount filled in. */
+  const openCorrect = (cents: Cents) => {
+    setCorrectInitial(formatCompact(cents))
+    setDialogRaw('CORRECT')
+  }
   const layout = useConsoleLayout()
 
   // Offline provisional records
@@ -156,6 +167,8 @@ export function ControlPage() {
           submitBid={submitBid}
           dialog={dialog}
           setDialog={setDialog}
+          correctInitial={correctInitial}
+          onCorrect={openCorrect}
         />
         {lease.lost && (
           <Modal title="Operator control lost" tone="danger" onClose={lease.dismissLost}>
@@ -242,6 +255,7 @@ export function ControlPage() {
               cloud={cloud.status}
               onSubmit={submitBid}
               onUndoShortcut={() => controlsEnabled && allowed.has('UNDO') && setDialog('UNDO')}
+              onCorrect={controlsEnabled && allowed.has('CORRECT') ? openCorrect : undefined}
               onPauseShortcut={() => {
                 if (!controlsEnabled) return
                 if (allowed.has('PAUSE')) void run({ type: 'PAUSE' })
@@ -262,7 +276,15 @@ export function ControlPage() {
               onTakeover={lease.takeover}
               now={now}
             />
-            <AuctionControls view={view} enabled={controlsEnabled} pending={runner.phase !== 'idle'} run={run} dialog={dialog} setDialog={setDialog} />
+            <AuctionControls
+              view={view}
+              enabled={controlsEnabled}
+              pending={runner.phase !== 'idle'}
+              run={run}
+              dialog={dialog}
+              setDialog={setDialog}
+              correctInitial={correctInitial}
+            />
             <DisplayPanel view={view} now={now} cloudOk={cloudOk} />
             <div className="max-h-[340px] min-h-[160px]">
               <BidHistory bids={view.bids} />

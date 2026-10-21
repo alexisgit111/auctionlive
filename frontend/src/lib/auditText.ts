@@ -25,6 +25,8 @@ export function describeEvent(e: AuctionEvent): string {
       return `Display moved here: ${d.label}`
     case 'DISPLAY_MOVED_OUT':
       return `Display moved to another session: ${d.label}`
+    case 'REOPENED':
+      return `Auction reopened (undo ${String(d.fromSaleStatus ?? 'end').replace('_', ' ').toLowerCase()})`
     case 'OFF_THE_MARKET':
       return 'Taken off the market (undo)'
     case 'OVERLAY_HIDDEN':

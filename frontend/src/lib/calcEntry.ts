@@ -3,6 +3,7 @@
  *   1K   then [+]   → current bid + $1,000
  *   1.25M then [SET] → $1,250,000
  *   [+] with nothing typed → current bid + the session's default increment
+ *   lower amount then [SET] → correction of the last bid (any amount, reason recorded)
  * The result is only a preview; the operator taps the same key again to send it.
  */
 import { formatCents, parseBidInput, type Cents } from './money'
@@ -10,7 +11,8 @@ import { formatCents, parseBidInput, type Cents } from './money'
 export type CalcOp = 'ADD' | 'SET'
 
 export type CalcResult =
-  | { ok: true; target: Cents; increment: Cents | null; warning: string | null }
+  /** kind CORRECT = SET below/at the current bid → replaces the last bid (needs a reason) */
+  | { ok: true; kind: 'BID' | 'CORRECT'; target: Cents; increment: Cents | null; warning: string | null }
   | { ok: false; message: string }
 
 const HALF = (c: Cents) => c / 2n
@@ -32,19 +34,21 @@ export function computeTarget(op: CalcOp, input: string, current: Cents | null, 
         : inc > HALF(current)
           ? `Big jump: +${formatCents(inc)}`
           : null
-    return { ok: true, target, increment: inc, warning }
+    return { ok: true, kind: 'BID', target, increment: inc, warning }
   }
   if (!typed) return { ok: false, message: 'Type an amount, then press SET' }
   const p = parseBidInput(typed)
   if (!p.ok) return { ok: false, message: p.message }
-  if (current !== null && p.cents <= current) return { ok: false, message: `Must be higher than ${formatCents(current)}` }
+  if (current !== null && p.cents === current) return { ok: false, message: `Already ${formatCents(current)}` }
+  if (current !== null && p.cents < current)
+    return { ok: true, kind: 'CORRECT', target: p.cents, increment: p.cents - current, warning: 'Lower than the current bid — corrects the last bid' }
   const warning =
     current !== null && p.cents - current > HALF(current)
       ? `Big jump: +${formatCents(p.cents - current)}`
       : current === null && p.cents < 1_000_000n
         ? `Opening bid only ${formatCents(p.cents)} — did you mean ${typed}K?`
         : null
-  return { ok: true, target: p.cents, increment: current === null ? null : p.cents - current, warning }
+  return { ok: true, kind: 'BID', target: p.cents, increment: current === null ? null : p.cents - current, warning }
 }
 
 /** Apply a keypad key to the typed text (keeps it short and well-formed). */
