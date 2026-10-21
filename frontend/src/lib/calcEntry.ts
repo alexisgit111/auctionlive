@@ -4,7 +4,7 @@
  *   1.25M then [SET] → $1,250,000
  *   [+] with nothing typed → current bid + the session's default increment
  *   lower amount then [SET] → correction of the last bid (any amount, reason recorded)
- * The result is only a preview; the operator taps the same key again to send it.
+ * One tap sends; a second tap is asked for only when there is a warning (missing K, very big jump).
  */
 import { formatCents, parseBidInput, type Cents } from './money'
 

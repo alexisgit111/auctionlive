@@ -33,8 +33,7 @@ async function signIn(page: Page, email: string, password: string) {
 async function enterBid(page: Page, amount: string) {
   const input = page.locator('#bid-input')
   await input.fill(amount)
-  await input.press('Enter')
-  await input.press('Enter')
+  await input.press('Enter') // one Enter sends
   await expect(input).toHaveValue('')
 }
 

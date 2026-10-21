@@ -27,8 +27,7 @@ async function signIn(page: Page, email = 'admin@demo.local', password = 'demo12
 async function enterBid(page: Page, amount: string) {
   const input = page.locator('#bid-input')
   await input.fill(amount)
-  await input.press('Enter') // preview → confirm
-  await input.press('Enter') // confirm → commit
+  await input.press('Enter') // one Enter sends
   await expect(input).toHaveValue('')
 }
 
@@ -87,9 +86,8 @@ test('full auction: pair display, bid, on the market, faults, sold', async ({ co
   await consolePage.locator('#bid-input').press('Escape')
   await expect(display.getByTestId('display-bid')).toHaveText('$1,250,000')
 
-  // Quick increment F2 (+5K) → confirm
+  // Quick increment F2 (+5K) → sent at once
   await consolePage.locator('#bid-input').press('F2')
-  await consolePage.locator('#bid-input').press('Enter')
   await expect(display.getByTestId('display-bid')).toHaveText('$1,255,000')
 
   await consolePage.getByRole('button', { name: 'On the market' }).click()
@@ -232,7 +230,8 @@ test('second operator is locked out', async ({ context }) => {
   await expect(b.locator('#bid-input')).toBeDisabled()
 })
 
-test('phone console: calculator keys, + / SET with tap-again-to-send, status buttons', async ({ context }) => {
+test('phone console: one-tap + / SET, undo key, status buttons', async ({ context }) => {
+  test.setTimeout(180_000)
   // Room display (desktop window) in the same browser — the prototype's data lives in this browser.
   const phone = await context.newPage()
   await phone.setViewportSize({ width: 390, height: 844 })
@@ -268,53 +267,44 @@ test('phone console: calculator keys, + / SET with tap-again-to-send, status but
   await phone.getByTestId('key-plus').click()
   await expect(phone.getByText(/press SET/)).toBeVisible()
 
-  // 950K SET → preview only; nothing sent yet
+  // 950K SET → sent at once
   await keys('9', '5', '0', 'K')
   await expect(phone.getByTestId('mobile-input')).toHaveText('950K')
   await phone.getByTestId('key-set').click()
-  await expect(phone.getByTestId('mobile-preview')).toHaveText('$950,000')
-  await expect(phone.getByTestId('mobile-current')).toHaveText('No bids')
-  // tap again → sent
-  await phone.getByTestId('key-set').click()
   await expect(phone.getByTestId('mobile-current')).toHaveText('$950,000')
+  await expect(phone.getByTestId('mobile-sent')).toContainText('$950,000')
   await expect(display.getByTestId('display-bid')).toHaveText('$950,000')
   await expect(phone.getByTestId('mobile-input')).toHaveText('0')
 
   // 1K + → $951,000
   await keys('1', 'K')
   await phone.getByTestId('key-plus').click()
-  await expect(phone.getByTestId('mobile-preview')).toHaveText('$951,000')
-  // a digit cancels the preview instead of sending
-  await keys('0')
-  await expect(phone.getByTestId('mobile-preview')).toHaveCount(0)
-  await keys('C')
-  await keys('1', 'K')
-  await phone.getByTestId('key-plus').click()
-  await phone.getByTestId('key-plus').click()
   await expect(display.getByTestId('display-bid')).toHaveText('$951,000')
 
   // + alone = default increment ($10K in the demo session)
-  await phone.getByTestId('key-plus').click()
-  await expect(phone.getByTestId('mobile-preview')).toHaveText('$961,000')
   await phone.getByTestId('key-plus').click()
   await expect(phone.getByTestId('mobile-current')).toHaveText('$961,000')
 
   // quick chip
   await phone.getByRole('button', { name: '+25K' }).click()
-  await phone.getByRole('button', { name: '✓' }).click()
   await expect(display.getByTestId('display-bid')).toHaveText('$986,000')
 
-  // 1.2M SET (with a "big jump"? no — +214K is below half)
+  // a likely slip ("5" without K) asks for a second tap; C cancels it
+  await keys('5')
+  await phone.getByTestId('key-plus').click()
+  await expect(phone.getByTestId('mobile-preview')).toHaveText('$986,005')
+  await expect(phone.getByText(/did you mean 5K/)).toBeVisible()
+  await expect(phone.getByTestId('mobile-current')).toHaveText('$986,000')
+  await keys('Clear')
+  await expect(phone.getByTestId('mobile-preview')).toHaveCount(0)
+
+  // 1.2M SET
   await keys('1', '.', '2', 'M')
-  await phone.getByTestId('key-set').click()
   await phone.getByTestId('key-set').click()
   await expect(display.getByTestId('display-bid')).toHaveText('$1,200,000')
 
-  // lower SET = correct the last bid (any amount), reason by one tap
+  // lower SET = correct the last bid (any amount): the correction box opens filled in, reason by one tap
   await keys('1', '.', '1', 'M')
-  await phone.getByTestId('key-set').click()
-  await expect(phone.getByText(/Correct last bid \$1,200,000/)).toBeVisible()
-  await expect(phone.getByTestId('mobile-current')).toHaveText('$1,200,000')
   await phone.getByTestId('key-set').click()
   const corr = phone.getByRole('dialog')
   await expect(corr.locator('#corr-amt')).toHaveValue('1,100K')
@@ -326,7 +316,7 @@ test('phone console: calculator keys, + / SET with tap-again-to-send, status but
   await keys('1', '.', '1', 'M')
   await phone.getByTestId('key-set').click()
   await expect(phone.getByText(/Already/)).toBeVisible()
-  await keys('C')
+  await keys('Clear')
 
   // status buttons
   await phone.getByRole('button', { name: 'On market' }).click()
@@ -334,12 +324,11 @@ test('phone console: calculator keys, + / SET with tap-again-to-send, status but
   await phone.getByRole('button', { name: 'Off market' }).click()
   await expect(display.getByTestId('display-status')).not.toHaveText(/On the market/i)
 
-  // menu → undo last bid (reason required)
-  await phone.getByTestId('mobile-menu').click()
-  await phone.getByRole('button', { name: /Undo last bid/ }).click()
-  await phone.getByRole('dialog').getByRole('textbox').fill('Misheard')
-  await phone.getByRole('dialog').getByRole('button', { name: 'Undo bid' }).click()
+  // ↶ key (top left) = undo last bid: key + reason, two taps
+  await phone.getByTestId('key-undo').click()
+  await phone.getByRole('dialog', { name: 'Undo last bid' }).getByRole('button', { name: 'Misheard' }).click()
   await expect(display.getByTestId('display-bid')).toHaveText('$986,000')
+  await expect(phone.getByTestId('mobile-current')).toHaveText('$986,000')
 
   // Sold
   await phone.getByRole('button', { name: 'Sold…' }).click()
@@ -354,7 +343,6 @@ test('phone console: calculator keys, + / SET with tap-again-to-send, status but
   await phone.getByRole('dialog').getByRole('button', { name: 'Reopen auction' }).click()
   await expect(phone.getByTestId('mobile-status')).toHaveText(/Live/i)
   await expect(display.getByTestId('display-status')).toHaveText(/Auction live/i)
-  await phone.getByTestId('key-plus').click()
   await phone.getByTestId('key-plus').click()
   await expect(display.getByTestId('display-bid')).toHaveText('$996,000')
 })

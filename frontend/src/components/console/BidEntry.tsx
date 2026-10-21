@@ -55,9 +55,9 @@ export function BidEntry(p: Props) {
     focus()
   }
 
-  const submit = async () => {
-    if (amount === null || blocked) return
-    const ok = await p.onSubmit(amount)
+  const submit = async (value: Cents | null = amount) => {
+    if (value === null || blocked) return
+    const ok = await p.onSubmit(value)
     if (ok) {
       setFlash((x) => x + 1)
       reset()
@@ -67,11 +67,12 @@ export function BidEntry(p: Props) {
     }
   }
 
+  /** F1–F6 / Num+ : current + increment, sent at once */
   const loadIncrement = (inc: Cents) => {
     if (p.currentCents === null || blocked) return
-    setInput(formatCompact(p.currentCents + inc))
-    setStage('confirm')
-    focus()
+    const target = p.currentCents + inc
+    setInput(formatCompact(target))
+    void submit(target)
   }
 
   const lowerForCorrect =
@@ -85,9 +86,8 @@ export function BidEntry(p: Props) {
       return
     }
     if (blocked) return
-    if (stage === 'input') {
-      if (amount !== null) setStage('confirm')
-    } else void submit()
+    // one Enter sends the bid
+    if (amount !== null) void submit()
   }
 
   const onEscape = () => {
@@ -197,7 +197,7 @@ export function BidEntry(p: Props) {
               <>
                 <div>
                   <div className={`text-[11px] font-bold uppercase tracking-[0.14em] ${stage === 'confirm' ? 'text-white/80' : 'text-ink-muted'}`}>
-                    {stage === 'confirm' ? (offline ? 'Record provisional bid?' : 'Confirm bid') : 'Preview'}
+                    {stage === 'confirm' ? (offline ? 'Record provisional bid?' : 'Confirm bid') : 'Next bid'}
                     {p.currentCents !== null && (
                       <span className="ml-2 normal-case tracking-normal">
                         (+{formatCents(amount - p.currentCents)})
@@ -221,8 +221,8 @@ export function BidEntry(p: Props) {
                     </button>
                   </div>
                 ) : (
-                  <button className="btn-primary px-6 py-3 text-lg" onClick={() => setStage('confirm')} disabled={blocked}>
-                    Enter bid <Kbd>Enter</Kbd>
+                  <button className="btn-primary px-6 py-3 text-lg" onClick={() => void submit()} disabled={blocked} data-testid="send-bid">
+                    {p.pending ? 'Sending…' : offline ? 'Record offline' : 'Send bid'} <Kbd>Enter</Kbd>
                   </button>
                 )}
               </>
@@ -230,7 +230,7 @@ export function BidEntry(p: Props) {
               <span className="text-sm text-ink-faint">
                 {p.canBid ? (
                   <>
-                    Type an amount, then <Kbd>Enter</Kbd> to preview and <Kbd>Enter</Kbd> again to confirm.
+                    Type an amount, then <Kbd>Enter</Kbd> to send it.
                   </>
                 ) : (
                   p.disabledReason
