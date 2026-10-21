@@ -100,8 +100,14 @@ export function createHttpServer(base = ''): AppServer {
 
   const display: AppServer['display'] = {
     requestPairing: () => call('POST', '/display/pairing', {}),
-    pollPairing: (pairingId: string) =>
-      call<{ status: Pairing['status']; token?: string; sessionId?: string; deviceId?: string }>('GET', `/display/pairing/${enc(pairingId)}`),
+    // replaceToken: this screen's current credential — retired once the new pairing is claimed.
+    pollPairing: (pairingId: string, replaceToken?: string | null) =>
+      call<{ status: Pairing['status']; token?: string; sessionId?: string; deviceId?: string }>(
+        'GET',
+        `/display/pairing/${enc(pairingId)}`,
+        undefined,
+        replaceToken ?? null,
+      ),
     getPublicState: (token: string | null) => call<PublicDisplayState>('GET', '/display/state', undefined, token),
     // With wait=true the server answers as soon as anything changes (long poll, ≤ ~3.5 s).
     heartbeat: (token: string | null, appliedVersion: number, opts?: { wait?: boolean; sessionId?: string }) =>

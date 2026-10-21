@@ -749,8 +749,10 @@ export function createMockServer(deps: ServerDeps) {
 
     async pollPairing(
       pairingId: string,
+      replaceToken?: string | null,
     ): Promise<{ status: Pairing['status']; token?: string; sessionId?: string; deviceId?: string }> {
       await displayNet()
+      const oldHash = replaceToken ? await sha256(replaceToken) : null
       return tx((db) => {
         const p = db.pairings[pairingId]
         if (!p) return { status: 'EXPIRED' as const }
@@ -759,6 +761,14 @@ export function createMockServer(deps: ServerDeps) {
           const token = p.pendingToken
           p.pendingToken = null // token is handed out exactly once
           p.status = 'CLAIMED'
+          const prev = oldHash ? Object.values(db.devices).find((d) => d.tokenHash === oldHash && !d.revokedAt) : undefined
+          if (prev && prev.id !== p.deviceId) {
+            prev.revokedAt = iso()
+            appendEvent(db, prev.sessionId, 'DISPLAY_REVOKED', null, {
+              reason: 'Screen paired with another session',
+              data: { deviceId: prev.id, label: prev.label },
+            })
+          }
           return { status: 'APPROVED' as const, token, sessionId: p.sessionId!, deviceId: p.deviceId! }
         }
         return { status: p.status }

@@ -74,6 +74,27 @@ function useIdleCursor() {
   return idle
 }
 
+/** True for a few seconds after someone moves the mouse / touches the screen (never on its own). */
+function useRecentPointer(ms = 4000) {
+  const [on, setOn] = useState(false)
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout>
+    const wake = () => {
+      setOn(true)
+      clearTimeout(t)
+      t = setTimeout(() => setOn(false), ms)
+    }
+    window.addEventListener('mousemove', wake)
+    window.addEventListener('touchstart', wake)
+    return () => {
+      window.removeEventListener('mousemove', wake)
+      window.removeEventListener('touchstart', wake)
+      clearTimeout(t)
+    }
+  }, [ms])
+  return on
+}
+
 /** Small status line under the bid (right column). */
 const STATUS_LINE: Record<PublicStatus, { text: string; cls: string }> = {
   NOT_STARTED: { text: 'Auction starting soon', cls: 'bg-subtle text-navy' },
@@ -108,6 +129,8 @@ function Feature({ icon, value, suffix }: { icon: ReactNode; value: number | nul
 
 function Stage({ state, overlay }: { state: PublicDisplayState | null; overlay: DisplayOverlay }) {
   const idle = useIdleCursor()
+  const pointer = useRecentPointer()
+  const nav = useNavigate()
   const bidRef = useRef<HTMLDivElement>(null)
   const lost = overlay === 'CONNECTION_LOST'
 
@@ -212,6 +235,15 @@ function Stage({ state, overlay }: { state: PublicDisplayState | null; overlay: 
 
       {/* ── Footer bar ── */}
       <div className="absolute bottom-0 left-[0.5cqw] right-[0.5cqw] flex h-[3.7cqw] items-center justify-end bg-navy px-[2.2cqw]">
+        {pointer && (
+          <button
+            data-testid="change-session"
+            className="mr-auto rounded-[0.4cqw] border border-white/40 px-[1.2cqw] py-[0.3cqw] text-[1.2cqw] font-semibold text-white hover:bg-white/10"
+            onClick={() => nav('/auction/pair?new=1')}
+          >
+            ⇄ Change session
+          </button>
+        )}
         <span className="text-[1.55cqw] font-light text-white">{FOOTER_TEXT}</span>
       </div>
 

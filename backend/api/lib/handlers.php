@@ -594,6 +594,16 @@ function h_display_pairing_poll(string $pid): array
         if ($p['status'] === 'APPROVED' && $p['pending_token']) {
             // the token is handed out exactly once
             q("UPDATE auction_pairings SET status = 'CLAIMED', pending_token = NULL WHERE id = ?", [$pid]);
+            // Re-pairing a screen that was already paired: retire its old pairing so it doesn't linger.
+            $old = $_SERVER['HTTP_X_DISPLAY_TOKEN'] ?? '';
+            if ($old !== '') {
+                $d = one('SELECT * FROM auction_devices WHERE token_hash = ? AND revoked_at IS NULL', [hash('sha256', $old)]);
+                if ($d && $d['id'] !== $p['device_id']) {
+                    $st = load_state($d['session_id'], true);
+                    q('UPDATE auction_devices SET revoked_at = ? WHERE id = ?', [iso(), $d['id']]);
+                    append_meta_event($st, 'DISPLAY_REVOKED', null, 'Screen paired with another session', ['deviceId' => $d['id'], 'label' => $d['label']]);
+                }
+            }
             return ['status' => 'APPROVED', 'token' => $p['pending_token'], 'sessionId' => $p['session_id'], 'deviceId' => $p['device_id']];
         }
         return ['status' => $p['status']];

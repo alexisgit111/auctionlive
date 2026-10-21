@@ -16,6 +16,7 @@ import {
   HealthStrip,
   LeasePanel,
   OfflinePanel,
+  ScreenSwitchBanner,
 } from '../components/console/panels'
 import { ErrorNote, Modal } from '../components/ui'
 import { API_VERSION } from '../engine/api'
@@ -241,6 +242,7 @@ export function ControlPage() {
         </ErrorNote>
       )}
 
+      {view && <ScreenSwitchBanner view={view} now={now} cloudOk={cloudOk} />}
       {view && (
         <div className="grid grid-cols-12 gap-3">
           {/* Left — bidding */}

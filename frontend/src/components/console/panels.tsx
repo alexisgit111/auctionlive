@@ -637,6 +637,57 @@ export function DisplayPanel({ view, now, cloudOk }: { view: StaffView; now: num
   )
 }
 
+/**
+ * Top-of-console prompt: this session has no screen, but a screen is online on another session.
+ * One tap moves it here (no re-pairing).
+ */
+export function ScreenSwitchBanner({ view, now, cloudOk, compact = false }: { view: StaffView; now: number; cloudOk: boolean; compact?: boolean }) {
+  const { user } = useUser()
+  const qc = useQueryClient()
+  const [busy, setBusy] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const q = useQuery({ queryKey: ['devices'], queryFn: () => server.staff.listDevices(), refetchInterval: 5000 })
+  const here = view.devices.filter((d) => !d.revokedAt && deviceHealth(d, view.state.stateVersion, now).connected).length
+  if (here > 0 || !q.data) return null
+  const online = q.data.filter(
+    (d) => d.sessionId !== view.session.id && !!d.lastHeartbeatAt && now - Date.parse(d.lastHeartbeatAt) <= 8000,
+  )
+  if (online.length === 0) return null
+  const move = async (d: DeviceSummary) => {
+    setBusy(d.id)
+    setErr(null)
+    try {
+      await server.staff.moveDevice(d.id, view.session.id, user)
+      await qc.invalidateQueries({ queryKey: ['devices'] })
+      await qc.invalidateQueries({ queryKey: ['staff', view.session.id] })
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <div className={`border-brand bg-brand-50 ${compact ? 'border-b-2 px-3 py-2' : 'rounded-lg border-2 px-4 py-3'}`} data-testid="screen-switch">
+      {online.map((d) => (
+        <div key={d.id} className="flex items-center gap-3">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-ok" aria-hidden />
+          <span className={`min-w-0 flex-1 ${compact ? 'text-[13px]' : 'text-sm'} text-navy`}>
+            <b>{d.label}</b> is showing <b>{d.sessionAddress || d.sessionTitle || 'another session'}</b>
+          </span>
+          <button
+            className={`btn-primary shrink-0 ${compact ? 'px-3 py-1.5 text-[13px]' : 'px-4 py-2 text-sm'}`}
+            disabled={!cloudOk || busy !== null}
+            onClick={() => void move(d)}
+          >
+            {busy === d.id ? 'Switching…' : 'Show this session'}
+          </button>
+        </div>
+      ))}
+      {err && <div className="mt-1 text-sm text-bad">{err}</div>}
+    </div>
+  )
+}
+
 /** Send a screen of this session to another session (e.g. the next property). */
 function MoveToSession({ deviceId, currentSessionId, disabled }: { deviceId: string; currentSessionId: string; disabled: boolean }) {
   const { user } = useUser()

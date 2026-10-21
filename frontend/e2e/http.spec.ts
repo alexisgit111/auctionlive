@@ -165,6 +165,45 @@ test('first-time setup, staff accounts, shared sessions, two-computer auction', 
   expect(beats).toBeLessThanOrEqual(5)
   await expect(console_.getByTestId('api-outdated')).toHaveCount(0)
 
+  const pickSession = async (text: string) => {
+    const label = await console_.locator('#session option', { hasText: text }).innerText()
+    await console_.locator('#session').selectOption({ label })
+  }
+
+  // ── Route 1: console banner — open the next session, one tap brings the screen over ──
+  await pickSession('7 Second Street')
+  const banner = console_.getByTestId('screen-switch')
+  await expect(banner).toContainText('is showing 85 Rosier Road', { timeout: 10_000 })
+  await banner.getByRole('button', { name: 'Show this session' }).click()
+  await expect(room.locator('h1')).toContainText('7 Second Street', { timeout: 6000 })
+  await expect(banner).toHaveCount(0, { timeout: 8000 })
+
+  // ── Route 2: from the screen computer itself — Change session → new code → approve on the console ──
+  await room.mouse.move(400, 400)
+  await room.mouse.move(420, 420)
+  await room.getByTestId('change-session').click()
+  await expect(room).toHaveURL(/\/auction\/pair/)
+  const code2El = room.getByTestId('pair-code')
+  await expect(code2El).not.toContainText('·')
+  const code2 = (await code2El.innerText()).replace(/\s/g, '')
+  await pickSession('85 Rosier Road')
+  await console_.getByLabel('Pairing code').fill(code2)
+  await console_.getByRole('button', { name: 'Approve' }).click()
+  await expect(room.locator('h1')).toContainText('85 Rosier Road', { timeout: 8000 })
+  // the old pairing was retired, not left behind as a second screen
+  const active = await console_.evaluate(async () => {
+    const r = await fetch('/api/index.php?r=%2Fdevices', { credentials: 'same-origin' })
+    return ((await r.json()) as { revokedAt: string | null }[]).filter((d) => !d.revokedAt).length
+  })
+  expect(active).toBe(1)
+
+  // ── Route 3: kiosk reboot — /auction/pair on a paired screen says where it is and goes back by itself ──
+  await room.goto('/auction/pair')
+  await expect(room.getByTestId('already-paired')).toContainText('85 Rosier Road')
+  await shot(room, 'h07-already-paired')
+  await room.waitForURL(/\/auction\/display\//, { timeout: 15_000 })
+  await expect(room.getByTestId('display-bid')).toHaveText('$1,125,000')
+
   // ── Sign out protects the console ──
   await console_.getByTestId('user-menu').click()
   await console_.getByRole('button', { name: 'Sign out' }).click()

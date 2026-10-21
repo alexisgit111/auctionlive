@@ -18,7 +18,7 @@ import type { Command } from '../../engine/types'
 import { computeTarget, typeKey, type CalcResult } from '../../lib/calcEntry'
 import { formatCents, type Cents } from '../../lib/money'
 import { QUICK_INCREMENTS_K } from './BidEntry'
-import { AuctionDialogs, LeasePanel, useDisplaysHealth, type Dialog } from './panels'
+import { AuctionDialogs, LeasePanel, ScreenSwitchBanner, useDisplaysHealth, type Dialog } from './panels'
 
 interface Props {
   view: StaffView
@@ -186,6 +186,8 @@ export function MobileConsole(p: Props) {
           {p.error.message} <span className="opacity-70">· tap to dismiss</span>
         </button>
       )}
+
+      <ScreenSwitchBanner view={p.view} now={p.now} cloudOk={p.cloud !== 'OFFLINE'} compact />
 
       {/* ── calculator display ── */}
       <section className="shrink-0 bg-navy px-4 pb-3 pt-2 text-white">

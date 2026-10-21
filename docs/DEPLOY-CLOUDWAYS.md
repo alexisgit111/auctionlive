@@ -57,8 +57,13 @@ Do **not** delete from `public_html`: `index.php` (serves the app on Nginx) and 
    `chrome.exe --kiosk https://auction.harcourts3kings.co.nz/auction/pair` (Windows shortcut / startup folder).
 5. The pairing is remembered in that browser. Reopening `/auction/pair` goes straight back to the display while the
    session is running; after a session has ended (or the device was revoked) it shows a new code for the next session.
-6. **Next property, same screen:** open the next session in the console → Room display → *Screens on other sessions* →
-   **Show this session**. The screen switches within a second; no new code needed.
+6. **Next property, same screen** — any of these, no re-pairing needed:
+   - Console: open the next session → the blue banner "*Auction room screen* is showing …" → **Show this session**.
+   - Console: on the session the screen is on → Room display → **Move to…** → pick the next session.
+   - Screen computer: move the mouse → **⇄ Change session** (bottom-left) → a new code appears → enter it on the
+     console of the session you want. The old pairing is retired automatically.
+7. Opening `/auction/pair` on a screen that is already paired shows which property it is on, with
+   **Show a different session**; untouched, it returns to the display after 8 s (kiosk reboot).
 
 Updates reach the screen almost instantly: the server holds each display request open (≤ 3.5 s) and answers the moment
 the auction changes. Each room display keeps one PHP worker busy while it waits; set `'display_wait_ms' => 0` in the
