@@ -232,13 +232,17 @@ export function AuctionControls({
               On the market
             </button>
           ))}
-        <button className="btn-ok py-3" disabled={!can('SOLD')} onClick={() => setDialog('SOLD')}>
-          Sold…
+        <button className="btn-ok py-3" disabled={!can('SOLD')} onClick={() => void run({ type: 'SOLD' })}>
+          Sold
         </button>
-        <button className="btn-ghost py-3" disabled={!can('PASSED_IN')} onClick={() => setDialog('PASSED_IN')}>
-          Passed in…
+        <button className="btn-ghost py-3" disabled={!can('PASSED_IN')} onClick={() => void run({ type: 'PASSED_IN' })}>
+          Passed in
         </button>
-        <button className="btn-ghost" disabled={!can('UNDO')} onClick={() => setDialog('UNDO')}>
+        <button
+          className="btn-ghost"
+          disabled={!can('UNDO') || !s.currentBidId}
+          onClick={() => void run({ type: 'UNDO', bidId: s.currentBidId!, reason: 'Undone on console' })}
+        >
           Undo last bid <Kbd>Ctrl Z</Kbd>
         </button>
         <button className="btn-ghost" disabled={!can('CORRECT')} onClick={() => setDialog('CORRECT')}>
@@ -255,13 +259,27 @@ export function AuctionControls({
             {s.overlayHidden ? 'Show room display stickers' : 'Hide all room display stickers'}
           </button>
         )}
-        {s.sessionStatus === 'ENDED' && (
-          <button className="btn col-span-2 border-2 border-navy py-3 text-navy hover:bg-navy/5" disabled={!can('REOPEN')} onClick={() => setDialog('REOPEN')}>
-            {s.saleStatus === 'SOLD' ? 'Undo SOLD — reopen auction…' : s.saleStatus === 'PASSED_IN' ? 'Undo PASSED IN — reopen…' : 'Reopen auction…'}
+        {s.sessionStatus !== 'NOT_STARTED' && (
+          <button
+            data-testid="toggle-price"
+            className={`btn col-span-2 border ${s.priceHidden ? 'border-brand bg-brand/10 text-navy' : 'border-line text-navy hover:bg-navy/5'}`}
+            disabled={!can(s.priceHidden ? 'SHOW_PRICE' : 'HIDE_PRICE')}
+            onClick={() => void run({ type: s.priceHidden ? 'SHOW_PRICE' : 'HIDE_PRICE' })}
+          >
+            {s.priceHidden ? 'Show the price on the room screen' : 'Hide the price on the room screen (or 0 Enter)'}
           </button>
         )}
-                <button className="btn-ghost col-span-2 text-ink-muted" disabled={!can('END')} onClick={() => setDialog('END')}>
-          End auction without result…
+        {s.sessionStatus === 'ENDED' && (
+          <button
+            className="btn col-span-2 border-2 border-navy py-3 text-navy hover:bg-navy/5"
+            disabled={!can('REOPEN')}
+            onClick={() => void run({ type: 'REOPEN', reason: 'Reopened on console' })}
+          >
+            {s.saleStatus === 'SOLD' ? 'Undo SOLD — reopen auction' : s.saleStatus === 'PASSED_IN' ? 'Undo PASSED IN — reopen' : 'Reopen auction'}
+          </button>
+        )}
+        <button className="btn col-span-2 border-2 border-bad/50 text-bad hover:bg-bad/5" disabled={!can('END')} onClick={() => void run({ type: 'END' })}>
+          End auction
         </button>
       </div>
 
@@ -273,7 +291,6 @@ export function AuctionControls({
 /** Confirmation dialogs for Sold / Passed in / End / Undo / Correct — shared by the desktop and phone consoles. */
 export function AuctionDialogs({
   view,
-  pending,
   run,
   dialog,
   setDialog,
@@ -290,102 +307,17 @@ export function AuctionDialogs({
   const s = view.state
   return (
     <>
-      {dialog === 'SOLD' && (
-        <Modal title="Confirm SOLD" tone="ok" onClose={() => setDialog(null)}>
-          <p className="text-ink-muted">The room display will show SOLD and the auction will end.</p>
-          <div className="my-4 rounded-md bg-ok/10 p-4 text-center text-4xl font-bold text-navy">{formatCents(s.currentBidCents)}</div>
-          <div className="flex justify-end gap-2">
-            <button className="btn-ghost" onClick={() => setDialog(null)}>
-              Cancel
-            </button>
-            <button
-              className="btn-ok"
-              disabled={pending}
-              onClick={async () => {
-                if (await run({ type: 'SOLD' })) setDialog(null)
-              }}
-            >
-              Confirm sold
-            </button>
-          </div>
-        </Modal>
-      )}
-      {dialog === 'PASSED_IN' && (
-        <ConfirmSimple
-          title="Confirm PASSED IN"
-          body={`Highest bid ${formatCents(s.currentBidCents)}. The room display will show PASSED IN and the auction will end.`}
-          action="Confirm passed in"
-          onCancel={() => setDialog(null)}
-          onConfirm={async () => {
-            if (await run({ type: 'PASSED_IN' })) setDialog(null)
-          }}
-        />
-      )}
-      {dialog === 'END' && (
-        <ConfirmSimple
-          title="End auction?"
-          body="Ends the session without recording Sold or Passed In. Use only if the auction is withdrawn or abandoned."
-          action="End auction"
-          danger
-          onCancel={() => setDialog(null)}
-          onConfirm={async () => {
-            if (await run({ type: 'END' })) setDialog(null)
-          }}
-        />
-      )}
-      {dialog === 'UNDO' && s.currentBidId && (
-        <ReasonDialog
-          title={`Undo bid ${formatCents(s.currentBidCents)}?`}
-          note="The bid stays in the record, marked REVERSED. The previous bid becomes current."
-          action="Undo bid"
-          reasons={['Misheard', 'Wrong bidder', 'Entered twice', 'Bid withdrawn']}
-          onCancel={() => setDialog(null)}
-          onConfirm={async (reason) => {
-            if (await run({ type: 'UNDO', bidId: s.currentBidId!, reason })) setDialog(null)
-          }}
-        />
-      )}
-      {dialog === 'REOPEN' && (
-        <ReasonDialog
-          title={s.saleStatus === 'SOLD' ? 'Undo SOLD and reopen the auction?' : s.saleStatus === 'PASSED_IN' ? 'Undo PASSED IN and reopen?' : 'Reopen the auction?'}
-          note={`The auction goes back to ${
-            s.concludedFrom?.saleStatus === 'ON_THE_MARKET' ? 'on the market' : (s.concludedFrom?.sessionStatus ?? 'paused').toLowerCase()
-          } with the current bid ${formatCents(s.currentBidCents)}. All bids stay in the record; this is recorded in the audit trail.`}
-          action="Reopen auction"
-          reasons={['Pressed by mistake', 'Bidding continues', 'Vendor negotiation — back on']}
-          onCancel={() => setDialog(null)}
-          onConfirm={async (reason) => {
-            if (await run({ type: 'REOPEN', reason })) setDialog(null)
-          }}
-        />
-      )}
       {dialog === 'CORRECT' && s.currentBidId && (
         <CorrectDialog
           current={s.currentBidCents!}
           initial={correctInitial}
           onCancel={() => setDialog(null)}
           onConfirm={async (amountCents, reason) => {
-            if (await run({ type: 'CORRECT', bidId: s.currentBidId!, amountCents, reason })) setDialog(null)
+            if (await run({ type: 'CORRECT', bidId: s.currentBidId!, amountCents, reason: reason.trim() || 'Corrected on console' })) setDialog(null)
           }}
         />
       )}
     </>
-  )
-}
-
-function ConfirmSimple(p: { title: string; body: string; action: string; danger?: boolean; onCancel: () => void; onConfirm: () => void }) {
-  return (
-    <Modal title={p.title} tone={p.danger ? 'danger' : 'default'} onClose={p.onCancel}>
-      <p className="mb-6 text-ink-muted">{p.body}</p>
-      <div className="flex justify-end gap-2">
-        <button className="btn-ghost" onClick={p.onCancel}>
-          Cancel
-        </button>
-        <button className={p.danger ? 'btn-danger' : 'btn-primary'} onClick={p.onConfirm}>
-          {p.action}
-        </button>
-      </div>
-    </Modal>
   )
 }
 
@@ -404,35 +336,6 @@ function ReasonChips({ reasons, value, onPick }: { reasons?: string[]; value: st
         </button>
       ))}
     </div>
-  )
-}
-
-function ReasonDialog(p: {
-  title: string
-  note: string
-  action: string
-  reasons?: string[]
-  onCancel: () => void
-  onConfirm: (reason: string) => void
-}) {
-  const [reason, setReason] = useState('')
-  return (
-    <Modal title={p.title} tone="danger" onClose={p.onCancel}>
-      <p className="mb-3 text-sm text-ink-muted">{p.note}</p>
-      <label className="label" htmlFor="reason">
-        Reason (required, recorded in audit trail)
-      </label>
-      <ReasonChips reasons={p.reasons} value={reason} onPick={setReason} />
-      <textarea id="reason" className="field h-16" value={reason} onChange={(e) => setReason(e.target.value)} />
-      <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-ghost" onClick={p.onCancel}>
-          Cancel
-        </button>
-        <button className="btn-danger" disabled={!reason.trim()} onClick={() => p.onConfirm(reason)}>
-          {p.action}
-        </button>
-      </div>
-    </Modal>
   )
 }
 
@@ -464,7 +367,7 @@ function CorrectDialog(p: { current: string; initial?: string; onCancel: () => v
           ))}
       </div>
       <label className="label mt-2" htmlFor="corr-reason">
-        Reason (required)
+        Reason (optional)
       </label>
       <ReasonChips reasons={['Misheard', 'Typo', 'Auctioneer corrected']} value={reason} onPick={setReason} />
       <textarea id="corr-reason" className="field h-16" value={reason} onChange={(e) => setReason(e.target.value)} />
@@ -472,7 +375,7 @@ function CorrectDialog(p: { current: string; initial?: string; onCancel: () => v
         <button className="btn-ghost" onClick={p.onCancel}>
           Cancel
         </button>
-        <button className="btn-danger" disabled={!parsed.ok || same || !reason.trim()} onClick={() => parsed.ok && p.onConfirm(parsed.cents.toString(), reason)}>
+        <button className="btn-danger" disabled={!parsed.ok || same} onClick={() => parsed.ok && p.onConfirm(parsed.cents.toString(), reason)}>
           Record correction
         </button>
       </div>
@@ -499,7 +402,6 @@ export function LeasePanel({
   now: number
 }) {
   const { user } = useUser()
-  const [takeover, setTakeover] = useState(false)
   const secs = lease ? Math.max(0, Math.round((Date.parse(lease.expiresAt) - now) / 1000)) : 0
   return (
     <div className={`panel p-4 ${hasControl ? '' : 'border-warn/40'}`}>
@@ -519,11 +421,9 @@ export function LeasePanel({
           <span className="text-sm">
             Held by <b className="text-warn">{lease.userName}</b>. This console is read-only.
           </span>
-          {user.role === 'admin' && (
-            <button className="btn-danger px-3 py-1 text-sm" onClick={() => setTakeover(true)}>
-              Take over…
-            </button>
-          )}
+          <button className="btn-danger px-3 py-1 text-sm" data-testid="takeover" onClick={() => void onTakeover('').catch(() => {})}>
+            Take over
+          </button>
         </div>
       ) : (
         <div className="flex items-center justify-between">
@@ -534,22 +434,6 @@ export function LeasePanel({
         </div>
       )}
       {error && <div className="mt-2"><ErrorNote>{error}</ErrorNote></div>}
-      {takeover && (
-        <ReasonDialog
-          title={`Take over from ${lease?.userName}?`}
-          note="Their console becomes read-only immediately. This is recorded in the audit trail."
-          action="Take over control"
-          onCancel={() => setTakeover(false)}
-          onConfirm={async (r) => {
-            try {
-              await onTakeover(r)
-              setTakeover(false)
-            } catch {
-              /* error shown */
-            }
-          }}
-        />
-      )}
     </div>
   )
 }

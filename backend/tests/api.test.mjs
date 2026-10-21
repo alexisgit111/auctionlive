@@ -126,10 +126,13 @@ describe('bidding', () => {
     assert.equal(r.json.error.code, 'VERSION_CONFLICT')
   })
 
-  it('second operator is locked out, admin takeover is audited', async () => {
+  it('second operator is locked out until they take over (one step, no reason); takeover is audited', async () => {
     assert.equal((await op2('POST', `/sessions/${sid}/lease`, {})).status, 423)
     assert.equal((await exec(op2, { type: 'BID', amountCents: K(1200) }, { lease: 'forged' })).status, 423)
-    assert.equal((await admin('POST', `/sessions/${sid}/lease/takeover`, { reason: '' })).status, 422)
+    const t2 = await op2('POST', `/sessions/${sid}/lease/takeover`, {})
+    assert.equal(t2.status, 200, JSON.stringify(t2.json))
+    const auto = (await admin('GET', `/sessions/${sid}/events`)).json.filter((e) => e.type === 'OPERATOR_TAKEOVER').at(-1)
+    assert.equal(auto.reason, 'Taken over')
     const t = await admin('POST', `/sessions/${sid}/lease/takeover`, { reason: 'Laptop froze' })
     assert.equal(t.status, 200)
     assert.equal((await exec(op1, { type: 'BID', amountCents: K(1200) })).status, 423) // op1 lost control
@@ -137,20 +140,21 @@ describe('bidding', () => {
     const r = await exec(admin, { type: 'BID', amountCents: K(1200) })
     assert.equal(r.status, 200)
     const events = (await admin('GET', `/sessions/${sid}/events`)).json
-    const takeover = events.find((e) => e.type === 'OPERATOR_TAKEOVER')
+    const takeover = events.filter((e) => e.type === 'OPERATOR_TAKEOVER').at(-1)
     assert.equal(takeover.reason, 'Laptop froze')
     const seqs = events.map((e) => e.seq)
     assert.deepEqual(seqs, [...seqs].sort((a, b) => a - b))
   })
 
-  it('undo requires a reason and keeps the record', async () => {
+  it('undo needs no reason (a default is recorded) and keeps the record', async () => {
     const v = (await admin('GET', `/sessions/${sid}/view`)).json
-    assert.equal((await exec(admin, { type: 'UNDO', bidId: v.state.currentBidId, reason: ' ' })).status, 422)
-    const r = await exec(admin, { type: 'UNDO', bidId: v.state.currentBidId, reason: 'Misheard' })
+    const r = await exec(admin, { type: 'UNDO', bidId: v.state.currentBidId })
     assert.equal(r.status, 200)
     assert.equal(r.json.state.currentBidCents, K(1000))
     const bids = (await admin('GET', `/sessions/${sid}/bids`)).json
     assert.equal(bids.find((b) => b.amountCents === K(1200)).status, 'REVERSED')
+    const ev = (await admin('GET', `/sessions/${sid}/events`)).json.filter((e) => e.type === 'BID_UNDONE').at(-1)
+    assert.equal(ev.reason, 'Undone')
   })
 
   it('on the market can be undone; stickers can be hidden and come back on a new status', async () => {
@@ -178,7 +182,6 @@ describe('bidding', () => {
     assert.equal((await exec(admin, { type: 'BID', amountCents: K(910) })).status, 200)
 
     assert.equal((await exec(admin, { type: 'SOLD' })).json.state.saleStatus, 'SOLD')
-    assert.equal((await exec(admin, { type: 'REOPEN', reason: '' })).status, 422)
     const re = await exec(admin, { type: 'REOPEN', reason: 'Pressed by mistake' })
     assert.equal(re.status, 200, JSON.stringify(re.json))
     assert.equal(re.json.state.sessionStatus, 'LIVE')
@@ -187,6 +190,18 @@ describe('bidding', () => {
     assert.equal((await exec(admin, { type: 'REOPEN', reason: 'again' })).status, 409)
     const ev = (await admin('GET', `/sessions/${sid}/events`)).json.find((e) => e.type === 'REOPENED')
     assert.equal(ev.reason, 'Pressed by mistake')
+
+    // 0 SET: the price disappears from the room screen until the next bid
+    const hid = await exec(admin, { type: 'HIDE_PRICE' })
+    assert.equal(hid.status, 200, JSON.stringify(hid.json))
+    assert.equal(hid.json.state.priceHidden, true)
+    assert.equal(hid.json.state.currentBidCents, K(910)) // the record keeps it
+    const shown = await exec(admin, { type: 'BID', amountCents: K(920) })
+    assert.equal(shown.json.state.priceHidden, false)
+    // SOLD then REOPEN without a reason → default reason
+    await exec(admin, { type: 'SOLD' })
+    const re2 = await exec(admin, { type: 'REOPEN' })
+    assert.equal(re2.status, 200, JSON.stringify(re2.json))
   })
 })
 

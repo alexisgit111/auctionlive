@@ -90,6 +90,8 @@ export interface AuctionState {
   welcomeOn?: boolean
   /** Room screen music (the "pause" music). Starts automatically on PAUSE, stops on RESUME / end. */
   musicOn?: boolean
+  /** "0 then SET": the room screen shows no price until the next bid (or SET to the same amount). */
+  priceHidden?: boolean
   /** Room screen music volume 0–100 (missing = 80). */
   volume?: number
   /** Where the auction was just before Sold / Passed in / End — restored by REOPEN. */
@@ -117,6 +119,8 @@ export type EventType =
   | 'MUSIC_STARTED'
   | 'MUSIC_STOPPED'
   | 'VOLUME_SET'
+  | 'PRICE_HIDDEN'
+  | 'PRICE_SHOWN'
   | 'OVERLAY_HIDDEN'
   | 'OVERLAY_SHOWN'
   | 'SOLD'
@@ -150,17 +154,19 @@ export type Command =
   | { type: 'RESUME' }
   | { type: 'END' }
   | { type: 'OFF_MARKET' }
-  | { type: 'REOPEN'; reason: string }
+  | { type: 'REOPEN'; reason?: string }
   | { type: 'SET_WELCOME'; on: boolean }
   | { type: 'SET_MUSIC'; on: boolean }
   | { type: 'SET_VOLUME'; percent: number }
+  | { type: 'HIDE_PRICE' }
+  | { type: 'SHOW_PRICE' }
   | { type: 'SET_OVERLAY'; hidden: boolean }
   | { type: 'ON_THE_MARKET' }
   | { type: 'SOLD' }
   | { type: 'PASSED_IN' }
   | { type: 'BID'; amountCents: string }
-  | { type: 'UNDO'; bidId: string; reason: string }
-  | { type: 'CORRECT'; bidId: string; amountCents: string; reason: string }
+  | { type: 'UNDO'; bidId: string; reason?: string }
+  | { type: 'CORRECT'; bidId: string; amountCents: string; reason?: string }
 
 export interface OperatorLease {
   sessionId: string
@@ -223,6 +229,8 @@ export interface PublicDisplayState {
   publicStatus: PublicStatus
   /** true → the display shows no status circle and no badge sticker. */
   overlayHidden: boolean
+  /** true → no price on the room screen (hidden with "0 SET", or the auction hasn't started) */
+  priceHidden: boolean
   welcomeOn: boolean
   musicOn: boolean
   /** 0–100 */

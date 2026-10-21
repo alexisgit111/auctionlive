@@ -477,9 +477,9 @@ function h_lease_release(string $sid): array
 
 function h_lease_takeover(string $sid): array
 {
-    $u = require_admin();
-    $reason = str_field(body(), 'reason', 500);
-    if ($reason === '') throw new ApiError('VALIDATION_FAILED', 'A reason is required for takeover', 422);
+    // Any staff account can take over in one tap; the audit trail records who took it from whom.
+    $u = require_staff();
+    $reason = str_field(body(), 'reason', 500) ?: 'Taken over';
     return tx(function () use ($sid, $u, $reason) {
         $state = load_state($sid, true);
         $prev = active_lease($sid);

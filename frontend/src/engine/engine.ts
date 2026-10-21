@@ -79,6 +79,7 @@ export function allowedCommands(s: AuctionState): Set<Command['type']> {
   if (s.sessionStatus !== 'NOT_STARTED') a.add('SET_OVERLAY')
   if (s.sessionStatus === 'ENDED') a.add('REOPEN')
   a.add('SET_WELCOME')
+  a.add(s.priceHidden ? 'SHOW_PRICE' : 'HIDE_PRICE')
   a.add('SET_MUSIC')
   a.add('SET_VOLUME')
   if ((s.sessionStatus === 'LIVE' || s.sessionStatus === 'PAUSED') && saleOpen(s)) {
@@ -172,6 +173,18 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
       type = 'AUCTION_ENDED'
       break
 
+    case 'HIDE_PRICE':
+      if (state.priceHidden) throw transition('The price is already hidden')
+      next.priceHidden = true
+      type = 'PRICE_HIDDEN'
+      break
+
+    case 'SHOW_PRICE':
+      if (!state.priceHidden) throw transition('The price is already shown')
+      next.priceHidden = false
+      type = 'PRICE_SHOWN'
+      break
+
     case 'SET_WELCOME':
       if (!!state.welcomeOn === !!cmd.on) throw transition(cmd.on ? 'Welcome screen is already on' : 'Welcome screen is already off')
       next.welcomeOn = !!cmd.on
@@ -197,13 +210,12 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
     case 'REOPEN': {
       // Undo Sold / Passed in / End: back to exactly where the auction was. Bids are untouched.
       if (state.sessionStatus !== 'ENDED') throw transition('Auction has not ended')
-      if (!cmd.reason?.trim()) throw new ApiError('VALIDATION_FAILED', 'A reason is required to reopen the auction', 422)
       const back = state.concludedFrom ?? { sessionStatus: 'PAUSED' as const, saleStatus: 'NONE' as const }
       next.sessionStatus = back.sessionStatus === 'LIVE' || back.sessionStatus === 'PAUSED' ? back.sessionStatus : 'PAUSED'
       next.saleStatus = back.saleStatus === 'ON_THE_MARKET' ? 'ON_THE_MARKET' : 'NONE'
       next.concludedFrom = null
       type = 'REOPENED'
-      reason = cmd.reason.trim()
+      reason = cmd.reason?.trim() || 'Reopened'
       data = { fromSaleStatus: state.saleStatus }
       break
     }
@@ -241,12 +253,11 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
     case 'UNDO': {
       if (state.sessionStatus !== 'LIVE' && state.sessionStatus !== 'PAUSED') throw transition('Auction is not running')
       if (!saleOpen(state)) throw transition('Sale is already concluded')
-      if (!cmd.reason.trim()) throw new ApiError('VALIDATION_FAILED', 'A reason is required to undo a bid', 422)
       if (cmd.bidId !== state.currentBidId) throw transition('Only the latest accepted bid can be undone')
       nextBids = bids.map((b) => (b.id === cmd.bidId ? { ...b, status: 'REVERSED' as const } : b))
       next = recomputeCurrent(next, nextBids)
       type = 'BID_UNDONE'
-      reason = cmd.reason.trim()
+      reason = cmd.reason?.trim() || 'Undone'
       data = { bidId: cmd.bidId, amountCents: state.currentBidCents }
       break
     }
@@ -254,7 +265,6 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
     case 'CORRECT': {
       if (state.sessionStatus !== 'LIVE' && state.sessionStatus !== 'PAUSED') throw transition('Auction is not running')
       if (!saleOpen(state)) throw transition('Sale is already concluded')
-      if (!cmd.reason.trim()) throw new ApiError('VALIDATION_FAILED', 'A reason is required to correct a bid', 422)
       if (cmd.bidId !== state.currentBidId) throw transition('Only the latest accepted bid can be corrected')
       if (!/^[1-9][0-9]*$/.test(cmd.amountCents)) throw new ApiError('INVALID_AMOUNT', 'Invalid amount', 400)
       const amount = BigInt(cmd.amountCents)
@@ -279,7 +289,7 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
       nextBids = [...bids.map((b) => (b.id === original.id ? { ...b, status: 'CORRECTED' as const } : b)), newBid]
       next = recomputeCurrent(next, nextBids)
       type = 'BID_CORRECTED'
-      reason = cmd.reason.trim()
+      reason = cmd.reason?.trim() || 'Corrected'
       data = { originalBidId: original.id, fromCents: original.amountCents, toCents: newBid.amountCents, bidId: newBid.id }
       break
     }
@@ -293,6 +303,8 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
   // Room media follows the auction: START closes the welcome screen; PAUSE starts the music,
   // leaving PAUSED (resume, sold, passed in, end) stops it. The buttons can still override.
   if (cmd.type === 'START') next.welcomeOn = false
+  // A new / corrected / undone price is always shown again.
+  if (cmd.type === 'BID' || cmd.type === 'CORRECT' || cmd.type === 'UNDO') next.priceHidden = false
   if (cmd.type !== 'SET_MUSIC') {
     if (next.sessionStatus === 'PAUSED' && state.sessionStatus !== 'PAUSED') next.musicOn = true
     else if (state.sessionStatus === 'PAUSED' && next.sessionStatus !== 'PAUSED') next.musicOn = false

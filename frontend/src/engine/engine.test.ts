@@ -88,9 +88,9 @@ describe('state machine', () => {
     expect(events.at(-1)!.data).toMatchObject({ soldCents: K(1275) })
   })
 
-  it('undo requires reason, is append-only, and restores the previous bid', () => {
+  it('undo is append-only, restores the previous bid, and records a default reason when none is given', () => {
     const { state, bids } = run([{ type: 'START' }, { type: 'BID', amountCents: K(1000) }, { type: 'BID', amountCents: K(1100) }])
-    expect(() => applyCommand(state, bids, { type: 'UNDO', bidId: state.currentBidId!, reason: '  ' }, ctx())).toThrow(/reason/)
+    expect(applyCommand(state, bids, { type: 'UNDO', bidId: state.currentBidId! }, ctx()).events[0].reason).toBe('Undone')
     const r = applyCommand(state, bids, { type: 'UNDO', bidId: state.currentBidId!, reason: 'Wrong amount' }, ctx())
     expect(r.state.currentBidCents).toBe(K(1000))
     expect(r.bids).toHaveLength(2) // nothing deleted
@@ -145,10 +145,25 @@ describe('state machine', () => {
     expect(pub).toMatchObject({ musicOn: true, welcomeOn: false, volume: 80, media: { welcomeMusic: '/m/1', pauseMusic: null } })
   })
 
+  it('0 SET hides the price on the room screen; the next bid or SHOW_PRICE shows it; no price before the start', () => {
+    const SESSION = { property: { addressLine: '', suburb: '', city: '', heroImage: null }, salespeople: [] } as unknown as Session
+    const pre = run([])
+    expect(toPublicState(SESSION, pre.state, 'now')).toMatchObject({ priceHidden: true, currentBidDisplay: '' })
+    const hid = run([{ type: 'START' }, { type: 'BID', amountCents: K(900) }, { type: 'HIDE_PRICE' }])
+    expect(hid.state.priceHidden).toBe(true)
+    expect(hid.state.currentBidCents).toBe(K(900)) // the record keeps the price
+    expect(toPublicState(SESSION, hid.state, 'now')).toMatchObject({ priceHidden: true, currentBidCents: null, currentBidDisplay: '' })
+    expect(allowedCommands(hid.state).has('SHOW_PRICE')).toBe(true)
+    const next = applyCommand(hid.state, hid.bids, { type: 'BID', amountCents: K(910) }, ctx())
+    expect(next.state.priceHidden).toBe(false)
+    expect(toPublicState(SESSION, next.state, 'now').currentBidDisplay).toBe('$910,000')
+    expect(applyCommand(hid.state, hid.bids, { type: 'SHOW_PRICE' }, ctx()).state.priceHidden).toBe(false)
+  })
+
   it('reopen undoes SOLD / PASSED IN / END and restores where the auction was', () => {
     const sold = run([{ type: 'START' }, { type: 'BID', amountCents: K(1000) }, { type: 'ON_THE_MARKET' }, { type: 'SOLD' }])
     expect(allowedCommands(sold.state).has('REOPEN')).toBe(true)
-    expect(() => applyCommand(sold.state, sold.bids, { type: 'REOPEN', reason: ' ' }, ctx())).toThrow(/reason/)
+    expect(applyCommand(sold.state, sold.bids, { type: 'REOPEN' }, ctx()).events[0].reason).toBe('Reopened')
     const r = applyCommand(sold.state, sold.bids, { type: 'REOPEN', reason: 'Pressed by mistake' }, ctx())
     expect(r.state.sessionStatus).toBe('LIVE')
     expect(r.state.saleStatus).toBe('ON_THE_MARKET')
@@ -179,7 +194,7 @@ describe('state machine', () => {
   })
 
   it('reports allowed commands for the UI', () => {
-    expect([...allowedCommands(initialState('s', 'n'))]).toEqual(['START', 'SET_WELCOME', 'SET_MUSIC', 'SET_VOLUME'])
+    expect([...allowedCommands(initialState('s', 'n'))]).toEqual(['START', 'SET_WELCOME', 'HIDE_PRICE', 'SET_MUSIC', 'SET_VOLUME'])
     const { state } = run([{ type: 'START' }])
     const a = allowedCommands(state)
     expect(a.has('BID')).toBe(true)

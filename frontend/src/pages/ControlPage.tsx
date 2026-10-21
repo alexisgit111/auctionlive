@@ -24,7 +24,7 @@ import { API_VERSION } from '../engine/api'
 import { allowedCommands } from '../engine/engine'
 import { anyFaultActive } from '../engine/faults'
 import type { Command } from '../engine/types'
-import { formatCompact, type Cents } from '../lib/money'
+import type { Cents } from '../lib/money'
 import { setWorkerInterval } from '../lib/workerTimer'
 import { addOfflineRecord, listOfflineRecords, type OfflineRecord } from '../lib/offlineStore'
 
@@ -69,8 +69,9 @@ export function ControlPage() {
   }
   /** A typed amount lower than the current bid → "Correct last bid" with that amount filled in. */
   const openCorrect = (cents: Cents) => {
-    setCorrectInitial(formatCompact(cents))
-    setDialogRaw('CORRECT')
+    // one step, like a calculator: the lower amount replaces the last bid
+    if (!view?.state.currentBidId) return
+    void run({ type: 'CORRECT', bidId: view.state.currentBidId, amountCents: cents.toString(), reason: 'Set on console' })
   }
   const layout = useConsoleLayout()
 
@@ -257,7 +258,15 @@ export function ControlPage() {
               pending={runner.phase !== 'idle'}
               cloud={cloud.status}
               onSubmit={submitBid}
-              onUndoShortcut={() => controlsEnabled && allowed.has('UNDO') && setDialog('UNDO')}
+              onUndoShortcut={() =>
+                controlsEnabled &&
+                allowed.has('UNDO') &&
+                view.state.currentBidId &&
+                void run({ type: 'UNDO', bidId: view.state.currentBidId, reason: 'Undone on console' })
+              }
+              priceHidden={!!view.state.priceHidden}
+              onHidePrice={() => controlsEnabled && !view.state.priceHidden && void run({ type: 'HIDE_PRICE' })}
+              onShowPrice={() => controlsEnabled && void run({ type: 'SHOW_PRICE' })}
               onCorrect={controlsEnabled && allowed.has('CORRECT') ? openCorrect : undefined}
               onPauseShortcut={() => {
                 if (!controlsEnabled) return

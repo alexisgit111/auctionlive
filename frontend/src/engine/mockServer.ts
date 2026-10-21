@@ -602,10 +602,8 @@ export function createMockServer(deps: ServerDeps) {
       notifyStaff(sessionId)
     },
 
-    async takeoverLease(sessionId: string, user: User, reason: string): Promise<OperatorLease> {
+    async takeoverLease(sessionId: string, user: User, reason = ''): Promise<OperatorLease> {
       await staffNet()
-      if (user.role !== 'admin') throw new ApiError('FORBIDDEN', 'Only an admin can take over control', 403)
-      if (!reason.trim()) throw new ApiError('VALIDATION_FAILED', 'A reason is required for takeover', 422)
       const lease = await tx((db) => {
         requireSession(db, sessionId)
         const prev = activeLease(db, sessionId)
@@ -623,7 +621,7 @@ export function createMockServer(deps: ServerDeps) {
         }
         db.leases[sessionId] = l
         appendEvent(db, sessionId, 'OPERATOR_TAKEOVER', user.id, {
-          reason: reason.trim(),
+          reason: reason.trim() || 'Taken over',
           data: { fromUserId: prev?.userId ?? null, fromUserName: prev?.userName ?? null },
         })
         return l

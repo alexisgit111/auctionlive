@@ -94,13 +94,13 @@ describe('operator lease', () => {
     expect(l2.userId).toBe(op2.id)
   })
 
-  it('admin takeover requires a reason and is audited', async () => {
-    await expect(env.server.staff.takeoverLease(sid, op2, 'x')).rejects.toMatchObject({ code: 'FORBIDDEN' })
-    await expect(env.server.staff.takeoverLease(sid, admin, ' ')).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
-    await env.server.staff.takeoverLease(sid, admin, 'Operator laptop froze')
+  it('any staff account takes over in one step (no reason needed) and it is audited', async () => {
+    await env.server.staff.takeoverLease(sid, op2)
     const ev = (await env.server.staff.getEvents(sid)).at(-1)!
     expect(ev.type).toBe('OPERATOR_TAKEOVER')
-    expect(ev.reason).toBe('Operator laptop froze')
+    expect(ev.reason).toBe('Taken over')
+    await env.server.staff.takeoverLease(sid, admin, 'Operator laptop froze')
+    expect((await env.server.staff.getEvents(sid)).at(-1)!.reason).toBe('Operator laptop froze')
     await expect(exec({ type: 'BID', amountCents: K(900) })).rejects.toBeInstanceOf(ApiError)
   })
 })

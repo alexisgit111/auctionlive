@@ -149,8 +149,12 @@ function Stage({ state, overlay }: { state: PublicDisplayState | null; overlay: 
   const circle = state && stickers ? CIRCLE[state.publicStatus] : undefined
   const bid = state?.currentBidDisplay ?? ''
   const bidSize = bid.length > 11 ? 'text-[4.4cqw]' : bid.length > 10 ? 'text-[4.9cqw]' : 'text-[5.4cqw]'
+  // No price before the start or after "0 SET" — no number, no dash.
+  const noPrice = !!state?.priceHidden
   const label =
-    state?.publicStatus === 'SOLD'
+    noPrice && state?.publicStatus !== 'NOT_STARTED'
+      ? ''
+      : state?.publicStatus === 'SOLD'
       ? 'Sold for:'
       : state?.publicStatus === 'PASSED_IN'
         ? 'Highest bid:'
@@ -208,14 +212,14 @@ function Stage({ state, overlay }: { state: PublicDisplayState | null; overlay: 
       {/* ── Current bid + salespeople ── */}
       <div className="absolute left-[66.5cqw] right-[0.5cqw] top-[11.4cqw] flex h-[40.6cqw] flex-col">
         <div className="flex flex-1 flex-col items-center justify-center">
-          <div className="text-[3cqw] font-light leading-none text-navy">{label}</div>
+          {label && <div className="text-[3cqw] font-light leading-none text-navy">{label}</div>}
           <div
             ref={bidRef}
             data-testid="display-bid"
             className={`mt-[1.8cqw] rounded-[0.5cqw] px-[1cqw] font-bold leading-none tracking-tight text-navy transition-opacity ${bidSize} ${lost ? 'opacity-25' : ''}`}
           >
             {bid ||
-              (state?.publicStatus === 'LIVE' || state?.publicStatus === 'ON_THE_MARKET' ? (
+              (noPrice ? null : state?.publicStatus === 'LIVE' || state?.publicStatus === 'ON_THE_MARKET' ? (
                 <span className="text-[2.4cqw] font-semibold text-ink-faint">Awaiting opening bid</span>
               ) : (
                 <span className="text-[4cqw] text-ink-faint">—</span>

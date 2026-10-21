@@ -108,6 +108,11 @@ export function useOperatorLease(sessionId: string | null, user: User, serverLea
   })
   const [lost, setLost] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** When our current lease was granted — a server view older than this is just not refreshed yet. */
+  const mineSince = useRef<number>(0)
+  const keep = (l: OperatorLease) => {
+    mineSince.current = Date.parse(l.acquiredAt) || Date.now()
+  }
 
   useEffect(() => {
     if (!sessionId) return setToken(null)
@@ -149,6 +154,7 @@ export function useOperatorLease(sessionId: string | null, user: User, serverLea
           // silently re-acquire — it is the same operator. Recorded as OPERATOR_ACQUIRED.
           try {
             const l = await server.staff.acquireLease(sessionId, user)
+            keep(l)
             store(l.leaseToken)
           } catch {
             store(null)
@@ -173,9 +179,10 @@ export function useOperatorLease(sessionId: string | null, user: User, serverLea
 
   const hasControl = !!token && !!serverLease && serverLease.leaseToken === token
 
-  // Server says someone else holds it → we lost it.
+  // Server says someone else holds it → we lost it. (A lease granted before ours is only a view that
+  // hasn't refreshed since we took over — not a loss.)
   useEffect(() => {
-    if (token && serverLease && serverLease.leaseToken !== token) {
+    if (token && serverLease && serverLease.leaseToken !== token && Date.parse(serverLease.acquiredAt) >= mineSince.current) {
       store(null)
       setLost(true)
     }
@@ -186,6 +193,7 @@ export function useOperatorLease(sessionId: string | null, user: User, serverLea
     setError(null)
     try {
       const l = await server.staff.acquireLease(sessionId, user)
+      keep(l)
       store(l.leaseToken)
       setLost(false)
     } catch (e) {
@@ -200,11 +208,12 @@ export function useOperatorLease(sessionId: string | null, user: User, serverLea
       store(null)
     }
   }
-  const takeover = async (reason: string) => {
+  const takeover = async (reason = '') => {
     if (!sessionId) return
     setError(null)
     try {
       const l = await server.staff.takeoverLease(sessionId, user, reason)
+      keep(l)
       store(l.leaseToken)
       setLost(false)
     } catch (e) {

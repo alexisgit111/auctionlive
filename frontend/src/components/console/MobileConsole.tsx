@@ -46,13 +46,6 @@ interface Props {
   onCorrect: (cents: Cents) => void
 }
 
-interface Armed {
-  key: string
-  kind: 'BID' | 'CORRECT'
-  target: Cents
-  increment: Cents | null
-  warning: string | null
-}
 
 const PUBLIC_LABEL: Record<string, string> = {
   NOT_STARTED: 'Not started',
@@ -78,84 +71,81 @@ export function MobileConsole(p: Props) {
   const defInc = BigInt(p.view.session.defaultIncrementCents)
   const allowed = allowedCommands(s)
   const can = (t: Command['type']) => p.controlsEnabled && !p.pending && allowed.has(t)
-  const keysOn = p.canBid && !p.pending
+  // Typing works whenever this phone has control; whether a bid is accepted is decided on send.
+  const keysOn = (p.canBid || p.controlsEnabled) && !p.pending
   const pub = derivePublicStatus(s)
   const displays = useDisplaysHealth(p.view, p.now)
   const audio = screenAudio(p.view, p.now)
 
   const [input, setInput] = useState('')
-  const [armed, setArmed] = useState<Armed | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [sheet, setSheet] = useState(false)
   const [flash, setFlash] = useState(0)
   const [sending, setSending] = useState(false)
-  const [sent, setSent] = useState<Cents | null>(null)
-  const [undoAsk, setUndoAsk] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
   useEffect(() => {
-    if (sent === null) return
-    const t = setTimeout(() => setSent(null), 1800)
+    if (done === null) return
+    const t = setTimeout(() => setDone(null), 1800)
     return () => clearTimeout(t)
-  }, [sent])
-
-  // Anything changing underneath (another bid, pause…) cancels a pending preview.
-  useEffect(() => setArmed(null), [s.currentBidCents, s.sessionStatus, s.saleStatus])
+  }, [done])
 
   const press = (k: string) => {
     if (!keysOn) return
-    setArmed(null)
     setMsg(null)
-    setSent(null)
+    setDone(null)
     setInput((v) => typeKey(v, k))
     buzz(5)
   }
 
-  /** One tap sends. A second tap is asked for only when the amount looks like a slip (missing K, very big jump). */
-  const op = async (keyId: string, compute: () => CalcResult) => {
+  const finish = (ok: boolean, text: string) => {
+    if (!ok) return
+    setInput('')
+    setFlash((f) => f + 1)
+    setDone(text)
+    buzz(30)
+  }
+
+  /** Calculator: one tap does it — no confirmations. */
+  const op = async (compute: () => CalcResult) => {
     if (!keysOn || sending) return
-    const confirming = armed?.key === keyId ? armed : null
-    let target: Cents
-    if (confirming) target = confirming.target
-    else {
-      const r = compute()
-      if (!r.ok) {
-        setArmed(null)
-        setMsg(r.message)
-        buzz([20, 40, 20])
-        return
-      }
-      if (r.kind === 'CORRECT') {
-        // lower than the current bid → correct the last bid (asks for a reason)
-        setArmed(null)
-        if (!allowed.has('CORRECT')) return setMsg('Lower than the current bid — nothing to correct right now')
-        setMsg(null)
-        setInput('')
-        p.onCorrect(r.target)
-        return
-      }
-      if (r.warning) {
-        setMsg(null)
-        setArmed({ key: keyId, kind: r.kind, target: r.target, increment: r.increment, warning: r.warning })
-        buzz([10, 30, 10])
-        return
-      }
-      target = r.target
+    const r = compute()
+    if (!r.ok) {
+      setMsg(r.message)
+      buzz([20, 40, 20])
+      return
     }
-    setArmed(null)
     setMsg(null)
     setSending(true)
-    const ok = await p.submitBid(target)
-    setSending(false)
-    if (ok) {
-      setInput('')
-      setFlash((f) => f + 1)
-      setSent(target)
-      buzz(30)
+    try {
+      if (r.kind === 'HIDE') {
+        finish(s.priceHidden ? true : await p.run({ type: 'HIDE_PRICE' }), 'Price hidden on the room screen')
+      } else if (r.kind === 'SHOW') {
+        finish(s.priceHidden ? await p.run({ type: 'SHOW_PRICE' }) : true, `Showing ${formatCents(r.target)}`)
+      } else if (r.kind === 'CORRECT') {
+        if (!allowed.has('CORRECT') || !s.currentBidId) return setMsg('Nothing to correct right now')
+        const ok = await p.run({ type: 'CORRECT', bidId: s.currentBidId, amountCents: r.target.toString(), reason: 'Set on console' })
+        finish(ok, `Set to ${formatCents(r.target)}`)
+      } else {
+        if (!p.canBid) return setMsg(p.bidDisabledReason ?? 'Bidding is closed')
+        finish(await p.submitBid(r.target), `Sent ${formatCents(r.target)}`)
+      }
+    } finally {
+      setSending(false)
     }
   }
 
-  const plus = () => op('ADD', () => computeTarget('ADD', input, current, defInc))
-  const set = () => op('SET', () => computeTarget('SET', input, current, defInc))
-  const chip = (k: number) => op(`chip${k}`, () => computeTarget('ADD', `${k}K`, current, defInc))
+  const plus = () => op(() => computeTarget('ADD', input, current, defInc))
+  const set = () => op(() => computeTarget('SET', input, current, defInc))
+  const chip = (k: number) => op(() => computeTarget('ADD', `${k}K`, current, defInc))
+  const undo = async () => {
+    if (!s.currentBidId || sending) return
+    setSending(true)
+    try {
+      finish(await p.run({ type: 'UNDO', bidId: s.currentBidId, reason: 'Undone on console' }), 'Last bid undone')
+    } finally {
+      setSending(false)
+    }
+  }
 
   const statusTone =
     pub === 'SOLD' ? 'bg-ok' : pub === 'ON_THE_MARKET' ? 'bg-brand' : pub === 'PAUSED' ? 'bg-warn' : pub === 'LIVE' ? 'bg-ok' : 'bg-white/20'
@@ -225,40 +215,28 @@ export function MobileConsole(p: Props) {
         >
           {formatCents(s.currentBidCents) === '—' ? 'No bids' : formatCents(s.currentBidCents)}
         </div>
+        {(s.priceHidden || s.sessionStatus === 'NOT_STARTED') && s.currentBidCents && (
+          <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.16em] text-amber-300" data-testid="mobile-price-hidden">
+            Hidden on the room screen
+          </div>
+        )}
 
         <div
-          className={`mt-3 flex min-h-[64px] items-center gap-3 rounded-lg px-3 py-2 ${
-            armed ? 'bg-warn' : msg ? 'bg-bad/80' : sent !== null ? 'bg-ok/90' : 'bg-navy-700'
-          }`}
+          className={`mt-3 flex min-h-[64px] items-center gap-3 rounded-lg px-3 py-2 ${msg ? 'bg-bad/80' : done !== null ? 'bg-ok/90' : 'bg-navy-700'}`}
           aria-live="polite"
         >
           <div className="min-w-0 flex-1 text-[13px] leading-tight">
-            {armed ? (
-              <>
-                <div className="font-semibold text-white/85">
-                  {armed.kind === 'CORRECT'
-                    ? `Correct last bid ${formatCents(s.currentBidCents)} → `
-                    : armed.increment !== null
-                      ? `+${formatCents(armed.increment)} → `
-                      : 'Opening bid → '}
-                </div>
-                <div className="text-2xl font-bold tabular-nums" data-testid="mobile-preview">
-                  {formatCents(armed.target)}
-                </div>
-                {armed.warning && <div className="mt-0.5 font-bold text-white">{armed.warning}</div>}
-              </>
-            ) : msg ? (
+            {msg ? (
               <span className="font-semibold">{msg}</span>
-            ) : sent !== null ? (
+            ) : done !== null ? (
               <span className="text-xl font-bold" data-testid="mobile-sent">
-                ✓ Sent {formatCents(sent)}
+                ✓ {done}
               </span>
             ) : !p.canBid ? (
               <span className="text-white/60">{p.bidDisabledReason ?? 'Bidding is closed'}</span>
             ) : (
               <span className="text-white/50">
-                Type <b className="text-white/80">1K</b> then <b className="text-white/80">+</b>, or <b className="text-white/80">1.25M</b> then{' '}
-                <b className="text-white/80">SET</b>
+                <b className="text-white/80">1K +</b> adds · <b className="text-white/80">1.25M SET</b> sets · <b className="text-white/80">0 SET</b> hides the price
               </span>
             )}
           </div>
@@ -266,9 +244,6 @@ export function MobileConsole(p: Props) {
             {input || <span className="text-white/20">0</span>}
           </div>
         </div>
-        {armed && (
-          <div className="mt-1 text-center text-[11px] font-semibold text-white/80">Looks unusual — tap the same key again to send · any digit to cancel</div>
-        )}
       </section>
 
       {/* ── control / status row ── */}
@@ -291,8 +266,8 @@ export function MobileConsole(p: Props) {
               Start auction
             </Act>
           ) : s.sessionStatus === 'ENDED' ? (
-            <Act tone="navyOutline" disabled={!can('REOPEN')} onClick={() => p.setDialog('REOPEN')} wide>
-              {s.saleStatus === 'SOLD' ? 'Undo SOLD — reopen…' : s.saleStatus === 'PASSED_IN' ? 'Undo PASSED IN — reopen…' : 'Reopen auction…'}
+            <Act tone="navyOutline" disabled={!can('REOPEN')} onClick={() => void p.run({ type: 'REOPEN', reason: 'Reopened on console' })} wide>
+              {s.saleStatus === 'SOLD' ? 'Undo SOLD — reopen' : s.saleStatus === 'PASSED_IN' ? 'Undo PASSED IN — reopen' : 'Reopen auction'}
             </Act>
           ) : s.sessionStatus === 'PAUSED' ? (
             <Act tone="brand" disabled={!can('RESUME')} onClick={() => void p.run({ type: 'RESUME' })}>
@@ -314,11 +289,11 @@ export function MobileConsole(p: Props) {
                   On market
                 </Act>
               )}
-              <Act tone="ok" disabled={!can('SOLD')} onClick={() => p.setDialog('SOLD')}>
-                Sold…
+              <Act tone="ok" disabled={!can('SOLD')} onClick={() => void p.run({ type: 'SOLD' })}>
+                Sold
               </Act>
-              <Act tone="ghost" disabled={!can('PASSED_IN')} onClick={() => p.setDialog('PASSED_IN')}>
-                Passed in…
+              <Act tone="ghost" disabled={!can('PASSED_IN')} onClick={() => void p.run({ type: 'PASSED_IN' })}>
+                Passed in
               </Act>
             </>
           )}
@@ -327,13 +302,21 @@ export function MobileConsole(p: Props) {
 
       {/* ── room screen media ── */}
       {p.lease.hasControl && (
-        <div className="grid shrink-0 grid-cols-2 gap-1.5 px-2 pt-1.5">
+        <div className="grid shrink-0 grid-cols-[1fr_1fr_auto] gap-1.5 px-2 pt-1.5">
           <Toggle on={!!s.welcomeOn} disabled={!can('SET_WELCOME')} onClick={() => void p.run({ type: 'SET_WELCOME', on: !s.welcomeOn })} testId="m-toggle-welcome">
             🖼 Welcome {s.welcomeOn ? 'ON' : 'OFF'}
           </Toggle>
           <Toggle on={!!s.musicOn} disabled={!can('SET_MUSIC')} onClick={() => void p.run({ type: 'SET_MUSIC', on: !s.musicOn })} testId="m-toggle-music" warn={(s.welcomeOn || s.musicOn) && (audio === 'blocked' || audio === 'error')}>
             ♪ Music {s.musicOn ? 'ON' : 'OFF'}
           </Toggle>
+          <button
+            data-testid="m-end"
+            className="h-10 rounded-lg border-2 border-bad/60 bg-white px-3 text-[14px] font-bold text-bad disabled:opacity-35"
+            disabled={!can('END')}
+            onClick={() => void p.run({ type: 'END' })}
+          >
+            End
+          </button>
         </div>
       )}
       {(s.welcomeOn || s.musicOn) && (audio === 'blocked' || audio === 'error') && (
@@ -343,17 +326,14 @@ export function MobileConsole(p: Props) {
       {/* ── quick increments ── */}
       <div className="grid shrink-0 grid-cols-6 gap-1.5 px-2 pt-1.5">
         {QUICK_INCREMENTS_K.map((k) => {
-          const on = armed?.key === `chip${k}`
           return (
             <button
               key={k}
-              className={`h-11 rounded-lg text-[15px] font-bold tabular-nums disabled:opacity-35 ${
-                on ? 'bg-warn text-white' : 'bg-brand-100 text-navy active:bg-brand/30'
-              }`}
-              disabled={!keysOn || current === null}
+              className="h-11 rounded-lg bg-brand-100 text-[15px] font-bold tabular-nums text-navy active:bg-brand/30 disabled:opacity-35"
+              disabled={!keysOn}
               onClick={() => void chip(k)}
             >
-              {on ? '✓' : `+${k}K`}
+              +{k}K
             </button>
           )
         })}
@@ -365,8 +345,8 @@ export function MobileConsole(p: Props) {
           data-testid="key-undo"
           aria-label="Undo last bid"
           className="flex flex-col items-center justify-center rounded-xl bg-warn/15 font-bold leading-none text-warn shadow-[0_1px_0_rgba(0,29,74,0.12)] active:bg-warn/30 disabled:opacity-35"
-          disabled={!can('UNDO')}
-          onClick={() => setUndoAsk(true)}
+          disabled={!can('UNDO') || sending}
+          onClick={() => void undo()}
         >
           <span className="text-[clamp(1.2rem,6vw,1.6rem)]">↶</span>
           <span className="mt-0.5 text-[10px] uppercase tracking-[0.12em]">Undo bid</span>
@@ -383,7 +363,7 @@ export function MobileConsole(p: Props) {
         <Key onClick={() => press('7')} disabled={!keysOn}>7</Key>
         <Key onClick={() => press('8')} disabled={!keysOn}>8</Key>
         <Key onClick={() => press('9')} disabled={!keysOn}>9</Key>
-        <OpKey armed={armed?.key === 'ADD'} sending={sending && armed?.key === 'ADD'} onClick={() => void plus()} disabled={!keysOn} label="Plus" testId="key-plus">
+        <OpKey onClick={() => void plus()} disabled={!keysOn || sending} label="Plus" testId="key-plus">
           +
         </OpKey>
         <Key onClick={() => press('4')} disabled={!keysOn}>4</Key>
@@ -393,10 +373,8 @@ export function MobileConsole(p: Props) {
         <Key onClick={() => press('2')} disabled={!keysOn}>2</Key>
         <Key onClick={() => press('3')} disabled={!keysOn}>3</Key>
         <OpKey
-          armed={armed?.key === 'SET'}
-          sending={sending && armed?.key === 'SET'}
           onClick={() => void set()}
-          disabled={!keysOn}
+          disabled={!keysOn || sending}
           label="Set"
           testId="key-set"
           small
@@ -420,55 +398,12 @@ export function MobileConsole(p: Props) {
         />
       )}
 
-      {undoAsk && s.currentBidId && (
-        <UndoSheet
-          amount={formatCents(s.currentBidCents)}
-          busy={p.pending}
-          onCancel={() => setUndoAsk(false)}
-          onUndo={async (reason) => {
-            if (await p.run({ type: 'UNDO', bidId: s.currentBidId!, reason })) {
-              setUndoAsk(false)
-              buzz(30)
-            }
-          }}
-        />
-      )}
-
       <AuctionDialogs view={p.view} pending={p.pending} run={p.run} dialog={p.dialog} setDialog={p.setDialog} correctInitial={p.correctInitial} />
     </div>
   )
 }
 
 // ───────────────────────── pieces ─────────────────────────
-/** Undo the last bid in two taps: the ↶ key, then a reason. */
-function UndoSheet({ amount, busy, onCancel, onUndo }: { amount: string; busy: boolean; onCancel: () => void; onUndo: (reason: string) => void }) {
-  const [other, setOther] = useState('')
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/50" onClick={onCancel} role="presentation">
-      <div className="rounded-t-2xl bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))]" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Undo last bid">
-        <div className="text-lg font-bold text-navy">Undo last bid {amount}?</div>
-        <div className="mb-3 text-sm text-ink-muted">Tap the reason — the bid stays in the record as REVERSED.</div>
-        <div className="grid grid-cols-2 gap-2">
-          {['Misheard', 'Wrong bidder', 'Entered twice', 'Bid withdrawn'].map((r) => (
-            <button key={r} className="h-12 rounded-lg bg-warn text-[15px] font-bold text-white disabled:opacity-40" disabled={busy} onClick={() => onUndo(r)}>
-              {r}
-            </button>
-          ))}
-        </div>
-        <div className="mt-2 flex gap-2">
-          <input className="field min-w-0 flex-1" placeholder="Other reason…" value={other} onChange={(e) => setOther(e.target.value)} aria-label="Other reason" />
-          <button className="btn-danger px-4" disabled={busy || !other.trim()} onClick={() => onUndo(other.trim())}>
-            Undo
-          </button>
-        </div>
-        <button className="mt-2 h-11 w-full rounded-lg text-[15px] font-semibold text-ink-muted" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
-    </div>
-  )
-}
-
 function Toggle({ on, disabled, onClick, children, testId, warn = false }: { on: boolean; disabled: boolean; onClick: () => void; children: ReactNode; testId: string; warn?: boolean }) {
   return (
     <button
@@ -519,8 +454,6 @@ function OpKey({
   children,
   onClick,
   disabled,
-  armed,
-  sending,
   label,
   testId,
   small = false,
@@ -528,30 +461,19 @@ function OpKey({
   children: ReactNode
   onClick: () => void
   disabled: boolean
-  armed: boolean
-  sending: boolean
   label: string
   testId: string
   small?: boolean
 }) {
   return (
     <button
-      aria-label={armed ? `${label} — confirm` : label}
+      aria-label={label}
       data-testid={testId}
-      className={`row-span-2 flex flex-col items-center justify-center rounded-xl font-bold text-white shadow-[0_2px_0_rgba(0,29,74,0.2)] disabled:opacity-40 ${
-        armed ? 'bg-warn' : 'bg-brand active:bg-brand-600'
-      }`}
+      className="row-span-2 flex flex-col items-center justify-center rounded-xl bg-brand font-bold text-white shadow-[0_2px_0_rgba(0,29,74,0.2)] active:bg-brand-600 disabled:opacity-40"
       disabled={disabled}
       onClick={onClick}
     >
-      {armed ? (
-        <>
-          <span className="text-[clamp(1.8rem,9vw,2.6rem)] leading-none">{sending ? '…' : '✓'}</span>
-          <span className="mt-1 text-xs font-bold uppercase tracking-[0.16em]">Send?</span>
-        </>
-      ) : (
-        <span className={small ? 'text-[clamp(1.2rem,6vw,1.6rem)] tracking-[0.08em]' : 'text-[clamp(2.2rem,11vw,3rem)] leading-none'}>{children}</span>
-      )}
+      <span className={small ? 'text-[clamp(1.2rem,6vw,1.6rem)] tracking-[0.08em]' : 'text-[clamp(2.2rem,11vw,3rem)] leading-none'}>{children}</span>
     </button>
   )
 }
@@ -673,11 +595,22 @@ function MenuSheet(
       >
         <div className="mx-auto mt-2 h-1.5 w-10 rounded-full bg-line" />
         <div className="divide-y divide-line">
-          <button className={item} disabled={!p.can('UNDO')} onClick={act(() => p.setDialog('UNDO'))}>
-            Undo last bid… <span className="text-sm text-ink-muted">{formatCents(s.currentBidCents)}</span>
+          <button
+            className={item}
+            disabled={!p.can('UNDO') || !s.currentBidId}
+            onClick={act(() => void p.run({ type: 'UNDO', bidId: s.currentBidId!, reason: 'Undone on console' }))}
+          >
+            Undo last bid <span className="text-sm text-ink-muted">{formatCents(s.currentBidCents)}</span>
           </button>
           <button className={item} disabled={!p.can('CORRECT')} onClick={act(() => p.setDialog('CORRECT'))}>
             Correct last bid…
+          </button>
+          <button
+            className={item}
+            disabled={!p.can(s.priceHidden ? 'SHOW_PRICE' : 'HIDE_PRICE')}
+            onClick={act(() => void p.run({ type: s.priceHidden ? 'SHOW_PRICE' : 'HIDE_PRICE' }))}
+          >
+            {s.priceHidden ? 'Show the price on the room screen' : 'Hide the price on the room screen'}
           </button>
           <button
             className={item}
@@ -685,9 +618,6 @@ function MenuSheet(
             onClick={act(() => void p.run({ type: 'SET_OVERLAY', hidden: !s.overlayHidden }))}
           >
             {s.overlayHidden ? 'Show room screen stickers' : 'Hide room screen stickers'}
-          </button>
-          <button className={`${item} text-bad`} disabled={!p.can('END')} onClick={act(() => p.setDialog('END'))}>
-            End auction without result…
           </button>
         </div>
 

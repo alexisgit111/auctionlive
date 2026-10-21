@@ -16,8 +16,12 @@ interface Props {
   onSubmit: (cents: Cents) => Promise<boolean>
   onUndoShortcut: () => void
   onPauseShortcut: () => void
-  /** Lower amount + Enter → open "Correct last bid" with it (undefined when correcting isn't allowed) */
+  /** Lower amount + Enter → correct the last bid to it (undefined when correcting isn't allowed) */
   onCorrect?: (cents: Cents) => void
+  /** "0" + Enter hides the price on the room screen; the current amount + Enter shows it again */
+  priceHidden?: boolean
+  onHidePrice?: () => void
+  onShowPrice?: () => void
 }
 
 const ALLOWED = /^[0-9.,kKmM ]*$/
@@ -34,12 +38,12 @@ export function BidEntry(p: Props) {
   const parsed = useMemo(() => parseBidInput(input), [input])
   const issue = useMemo(() => {
     if (!input.trim()) return null
+    if (/^[0.]+$/.test(input.trim())) return 'Enter hides the price on the room screen'
     if (!parsed.ok) return parsed.message
-    if (p.currentCents !== null && parsed.cents === p.currentCents) return `Already the current bid`
+    if (p.currentCents !== null && parsed.cents === p.currentCents)
+      return p.priceHidden ? 'Enter shows the price on the room screen again' : 'This is the current bid'
     if (p.currentCents !== null && parsed.cents < p.currentCents)
-      return p.onCorrect
-        ? `Lower than ${formatCents(p.currentCents)} — press Enter to correct the last bid to ${formatCents(parsed.cents)}`
-        : `Must be higher than current bid ${formatCents(p.currentCents)}`
+      return p.onCorrect ? `Enter sets the last bid to ${formatCents(parsed.cents)}` : `Must be higher than current bid ${formatCents(p.currentCents)}`
     return null
   }, [input, parsed, p.currentCents])
   const amount = parsed.ok && !issue ? parsed.cents : null
@@ -79,6 +83,17 @@ export function BidEntry(p: Props) {
     p.onCorrect && parsed.ok && p.currentCents !== null && parsed.cents < p.currentCents ? parsed.cents : null
 
   const onEnter = () => {
+    const t = input.trim()
+    if (/^[0.]+$/.test(t) && t !== '') {
+      p.onHidePrice?.()
+      setInput('')
+      return
+    }
+    if (parsed.ok && p.currentCents !== null && parsed.cents === p.currentCents) {
+      if (p.priceHidden) p.onShowPrice?.()
+      setInput('')
+      return
+    }
     if (lowerForCorrect !== null && p.onCorrect) {
       p.onCorrect(lowerForCorrect)
       setInput('')
@@ -316,7 +331,7 @@ export function BidEntry(p: Props) {
         </div>
         <button
           className="btn-primary mt-2 h-[62px] w-full text-xl"
-          disabled={(blocked || amount === null) && lowerForCorrect === null}
+          disabled={(blocked || amount === null) && lowerForCorrect === null && !/^[0.]+$/.test(input.trim())}
           onClick={onEnter}
         >
           {stage === 'confirm' ? 'Confirm' : 'Enter'}

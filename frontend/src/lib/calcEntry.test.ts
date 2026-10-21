@@ -7,44 +7,34 @@ const ok = (r: ReturnType<typeof computeTarget>) => {
   return r
 }
 
-describe('phone calculator entry', () => {
-  it('1K then + adds to the current bid', () => {
-    const r = ok(computeTarget('ADD', '1K', $(1_125_000), $(10_000)))
-    expect(r.target).toBe($(1_126_000))
-    expect(r.increment).toBe($(1000))
-    expect(r.warning).toBeNull()
-  })
-
-  it('+ with nothing typed uses the default increment', () => {
+describe('console calculator entry (no confirmations)', () => {
+  it('1K then + adds to the current bid; + alone adds the default increment', () => {
+    expect(ok(computeTarget('ADD', '1K', $(1_125_000), $(10_000))).target).toBe($(1_126_000))
     expect(ok(computeTarget('ADD', '', $(900_000), $(10_000))).target).toBe($(910_000))
   })
 
-  it('1.25M then SET sets the bid', () => {
-    expect(ok(computeTarget('SET', '1.25M', $(1_125_000), $(10_000))).target).toBe($(1_250_000))
+  it('+ before any bid starts from zero, like a calculator', () => {
+    expect(ok(computeTarget('ADD', '500K', null, $(10_000))).target).toBe($(500_000))
   })
 
-  it('SET opens the auction when there is no bid', () => {
-    expect(ok(computeTarget('SET', '850K', null, $(10_000))).target).toBe($(850_000))
+  it('SET sets the bid; no warnings for small or big amounts', () => {
+    expect(ok(computeTarget('SET', '1.25M', $(1_125_000), $(10_000)))).toMatchObject({ kind: 'BID', target: $(1_250_000) })
+    expect(ok(computeTarget('SET', '950', null, $(10_000)))).toMatchObject({ kind: 'BID', target: $(950) })
+    expect(ok(computeTarget('ADD', '5', $(1_000_000), $(10_000))).target).toBe($(1_000_005))
   })
 
-  it('rejects + before the first bid, lower SET amounts and bad input', () => {
-    expect(computeTarget('ADD', '1K', null, $(10_000)).ok).toBe(false)
-    expect(computeTarget('SET', '1.125M', $(1_125_000), $(10_000)).ok).toBe(false)
-    expect(computeTarget('SET', '', $(1_000_000), $(10_000)).ok).toBe(false)
+  it('SET lower = correct the last bid; SET same = show the price; 0 SET = hide the price', () => {
+    expect(ok(computeTarget('SET', '1.1M', $(1_125_000), $(10_000)))).toMatchObject({ kind: 'CORRECT', target: $(1_100_000) })
+    expect(ok(computeTarget('SET', '1.125M', $(1_125_000), $(10_000))).kind).toBe('SHOW')
+    expect(ok(computeTarget('SET', '0', $(1_125_000), $(10_000))).kind).toBe('HIDE')
+    expect(ok(computeTarget('SET', '0', null, $(10_000))).kind).toBe('HIDE')
+  })
+
+  it('keeps the money format limits (whole dollars, $100M)', () => {
     expect(computeTarget('ADD', '1.2345K', $(1_000_000), $(10_000)).ok).toBe(false)
-  })
-
-  it('SET below the current bid becomes a correction of the last bid', () => {
-    const r = ok(computeTarget('SET', '1.1M', $(1_125_000), $(10_000)))
-    expect(r.kind).toBe('CORRECT')
-    expect(r.target).toBe($(1_100_000))
-    expect(ok(computeTarget('SET', '1.2M', $(1_125_000), $(10_000))).kind).toBe('BID')
-  })
-
-  it('warns about likely slips (missing K, very big jump)', () => {
-    expect(ok(computeTarget('ADD', '5', $(1_000_000), $(10_000))).warning).toMatch(/5K/)
-    expect(ok(computeTarget('ADD', '1.25M', $(1_000_000), $(10_000))).warning).toMatch(/Big jump/)
-    expect(ok(computeTarget('SET', '950', null, $(10_000))).warning).toMatch(/950K/)
+    expect(computeTarget('SET', '101M', null, $(10_000)).ok).toBe(false)
+    expect(computeTarget('ADD', '1K', $(100_000_000), $(10_000)).ok).toBe(false)
+    expect(computeTarget('SET', '', $(1_000_000), $(10_000)).ok).toBe(false)
   })
 
   it('keypad typing stays well-formed', () => {
@@ -52,11 +42,11 @@ describe('phone calculator entry', () => {
     for (const k of ['1', '.', '2', '5', 'M', '5']) s = typeKey(s, k)
     expect(s).toBe('1.25M')
     expect(typeKey('', 'K')).toBe('')
+    expect(typeKey('', '0')).toBe('0')
     expect(typeKey('', '.')).toBe('0.')
     expect(typeKey('1.2', '.')).toBe('1.2')
     expect(typeKey('0', '7')).toBe('7')
     expect(typeKey('12', '00')).toBe('1200')
-    expect(typeKey('1.25M', '⌫')).toBe('1.25')
     expect(typeKey('1.25M', 'C')).toBe('')
   })
 })

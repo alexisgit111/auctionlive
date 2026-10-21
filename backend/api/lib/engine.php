@@ -163,6 +163,18 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
             $evType = 'AUCTION_ENDED';
             break;
 
+        case 'HIDE_PRICE':
+            if (!empty($state['priceHidden'])) throw eng_transition('The price is already hidden');
+            $next['priceHidden'] = true;
+            $evType = 'PRICE_HIDDEN';
+            break;
+
+        case 'SHOW_PRICE':
+            if (empty($state['priceHidden'])) throw eng_transition('The price is already shown');
+            $next['priceHidden'] = false;
+            $evType = 'PRICE_SHOWN';
+            break;
+
         case 'SET_WELCOME':
             $on = !empty($cmd['on']);
             if (!empty($state['welcomeOn']) === $on) throw eng_transition($on ? 'Welcome screen is already on' : 'Welcome screen is already off');
@@ -191,8 +203,7 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
         case 'REOPEN':
             // Undo Sold / Passed in / End: back to exactly where the auction was. Bids are untouched.
             if ($state['sessionStatus'] !== 'ENDED') throw eng_transition('Auction has not ended');
-            $reason = trim((string) ($cmd['reason'] ?? ''));
-            if ($reason === '') throw new ApiError('VALIDATION_FAILED', 'A reason is required to reopen the auction', 422);
+            $reason = trim((string) ($cmd['reason'] ?? '')) ?: 'Reopened';
             $back = $state['concludedFrom'] ?? ['sessionStatus' => 'PAUSED', 'saleStatus' => 'NONE'];
             $next['sessionStatus'] = in_array($back['sessionStatus'] ?? '', ['LIVE', 'PAUSED'], true) ? $back['sessionStatus'] : 'PAUSED';
             $next['saleStatus'] = ($back['saleStatus'] ?? '') === 'ON_THE_MARKET' ? 'ON_THE_MARKET' : 'NONE';
@@ -228,8 +239,7 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
         case 'UNDO':
             if (!$running) throw eng_transition('Auction is not running');
             if (!eng_sale_open($state)) throw eng_transition('Sale is already concluded');
-            $reason = trim((string) ($cmd['reason'] ?? ''));
-            if ($reason === '') throw new ApiError('VALIDATION_FAILED', 'A reason is required to undo a bid', 422);
+            $reason = trim((string) ($cmd['reason'] ?? '')) ?: 'Undone';
             if (($cmd['bidId'] ?? null) !== $state['currentBidId']) throw eng_transition('Only the latest accepted bid can be undone');
             foreach ($bids as &$b) if ($b['id'] === $cmd['bidId']) $b['status'] = 'REVERSED';
             unset($b);
@@ -242,8 +252,7 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
         case 'CORRECT':
             if (!$running) throw eng_transition('Auction is not running');
             if (!eng_sale_open($state)) throw eng_transition('Sale is already concluded');
-            $reason = trim((string) ($cmd['reason'] ?? ''));
-            if ($reason === '') throw new ApiError('VALIDATION_FAILED', 'A reason is required to correct a bid', 422);
+            $reason = trim((string) ($cmd['reason'] ?? '')) ?: 'Corrected';
             if (($cmd['bidId'] ?? null) !== $state['currentBidId']) throw eng_transition('Only the latest accepted bid can be corrected');
             $amount = eng_amount((string) ($cmd['amountCents'] ?? ''));
             if ((string) $amount === $state['currentBidCents'])
@@ -287,6 +296,8 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
     }
     // Room media follows the auction (see engine.ts)
     if ($type === 'START') $next['welcomeOn'] = false;
+    // A new / corrected / undone price is always shown again.
+    if (in_array($type, ['BID', 'CORRECT', 'UNDO'], true)) $next['priceHidden'] = false;
     if ($type !== 'SET_MUSIC') {
         if ($next['sessionStatus'] === 'PAUSED' && $state['sessionStatus'] !== 'PAUSED') $next['musicOn'] = true;
         elseif ($state['sessionStatus'] === 'PAUSED' && $next['sessionStatus'] !== 'PAUSED') $next['musicOn'] = false;
@@ -336,6 +347,8 @@ function derive_public_status(array $s): string
 
 function to_public_state(array $session, array $state): array
 {
+    // No price on the room screen before the auction starts, or after "0 SET".
+    $noPrice = $state['sessionStatus'] === 'NOT_STARTED' || !empty($state['priceHidden']);
     $p = $session['property'] ?? [];
     $num = fn($v) => is_numeric($v) ? (int) $v : null;
     $people = [];
@@ -353,8 +366,9 @@ function to_public_state(array $session, array $state): array
         'musicOn' => !empty($state['musicOn']),
         'volume' => (int) ($state['volume'] ?? 80),
         'media' => room_media_public(),
-        'currentBidCents' => $state['currentBidCents'],
-        'currentBidDisplay' => format_cents($state['currentBidCents']),
+        'priceHidden' => $noPrice,
+        'currentBidCents' => $noPrice ? null : $state['currentBidCents'],
+        'currentBidDisplay' => $noPrice ? '' : format_cents($state['currentBidCents']),
         'property' => [
             'addressLine' => (string) ($p['addressLine'] ?? ''),
             'suburb' => (string) ($p['suburb'] ?? ''),

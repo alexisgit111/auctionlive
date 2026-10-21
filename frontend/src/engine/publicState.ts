@@ -24,6 +24,8 @@ export function derivePublicStatus(s: Pick<AuctionState, 'sessionStatus' | 'sale
 }
 
 export function toPublicState(session: Session, state: AuctionState, serverTime: string, media?: RoomMedia | null): PublicDisplayState {
+  // No price on the room screen before the auction starts, or after "0 SET".
+  const noPrice = state.sessionStatus === 'NOT_STARTED' || !!state.priceHidden
   return {
     sessionId: state.sessionId,
     stateVersion: state.stateVersion,
@@ -35,8 +37,9 @@ export function toPublicState(session: Session, state: AuctionState, serverTime:
     musicOn: !!state.musicOn,
     volume: state.volume ?? DEFAULT_VOLUME,
     media: { welcomeImage: media?.welcomeImage ?? null, welcomeMusic: media?.welcomeMusic ?? null, pauseMusic: media?.pauseMusic ?? null },
-    currentBidCents: state.currentBidCents,
-    currentBidDisplay: state.currentBidCents ? formatCents(state.currentBidCents) : '',
+    priceHidden: noPrice,
+    currentBidCents: noPrice ? null : state.currentBidCents,
+    currentBidDisplay: !noPrice && state.currentBidCents ? formatCents(state.currentBidCents) : '',
     property: {
       addressLine: session.property.addressLine,
       suburb: session.property.suburb,

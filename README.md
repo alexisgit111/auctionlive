@@ -67,17 +67,22 @@ Double-click the room display to go fullscreen.
 
 On a phone (screen narrower than 768 px) `/auction/control` turns into a calculator-style console:
 
+Works like a calculator — one tap, no confirmations (desktop: the same with Enter):
+
 | Type | Press | Result |
 |---|---|---|
-| `1K` | **+** | sent at once: current bid + $1,000 |
-| `1.25M` | **SET** | sent at once: $1,250,000 |
+| `1K` | **+** | current bid + $1,000 (no bid yet → starts from $0) |
 | (nothing) | **+** | current bid + the session's default increment |
-| | **+5K** chip | sent at once |
-| a lower amount, e.g. `1.1M` | **SET** | opens "Correct last bid" filled in — tap a reason |
-| | **↶ Undo bid** (top-left key) | undo the last bid — tap a reason |
+| `1.25M` | **SET** | sets $1,250,000 |
+| a lower amount, e.g. `1.1M` | **SET** | sets the last bid to it (recorded as a correction, reason "Set on console") |
+| `0` | **SET** | hides the price on the room screen until the next bid (SET the same amount shows it again) |
+| | **+5K** chip | adds at once |
+| | **↶ Undo bid** (top-left) | undoes the last bid at once |
 
-Only an amount that looks like a slip (no K on a small number, or a jump of more than half the current bid) asks for a
-second tap on the same key. **C** (top-right) clears the typing. Status buttons (Start / Pause / On market / Sold / Passed in) sit above the keypad;
+**C** (top-right) clears the typing. Only the money format is checked (whole dollars, max $100M). Before the auction
+starts the room screen shows no price. Sold, Passed in, End and Undo SOLD are one tap; reasons are recorded
+automatically in the audit trail. Any staff account can take over control in one tap.
+Status buttons (Start / Pause / On market / Sold / Passed in) sit above the keypad;
 Undo, Correct, stickers, pairing a room screen and End are in the ☰ menu. After Sold / Passed in, **Undo SOLD — reopen…**
 puts the auction back exactly where it was (reason recorded; all bids kept). "Phone layout" / "Switch to desktop
 layout" force either layout on any device. Add the page to the home screen to run it full screen.
