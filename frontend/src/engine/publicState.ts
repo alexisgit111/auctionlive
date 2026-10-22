@@ -33,6 +33,7 @@ export function toPublicState(session: Session, state: AuctionState, serverTime:
     saleStatus: state.saleStatus,
     publicStatus: derivePublicStatus(state),
     overlayHidden: !!state.overlayHidden,
+    call: state.call === 1 || state.call === 2 ? state.call : 0,
     welcomeOn: !!state.welcomeOn,
     musicOn: !!state.musicOn,
     volume: state.volume ?? DEFAULT_VOLUME,

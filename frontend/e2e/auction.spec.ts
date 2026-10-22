@@ -289,8 +289,8 @@ test('phone console: one-tap + / SET, undo key, status buttons', async ({ contex
   await phone.getByTestId('key-plus').click()
   await expect(phone.getByTestId('mobile-current')).toHaveText('$961,000')
 
-  // quick chip
-  await phone.getByRole('button', { name: '+25K' }).click()
+  await keys('2', '5', 'K')
+  await phone.getByTestId('key-plus').click()
   await expect(display.getByTestId('display-bid')).toHaveText('$986,000')
 
   // no warnings: "5" without K adds $5, like a calculator; undo it with the ↶ key
@@ -321,15 +321,41 @@ test('phone console: one-tap + / SET, undo key, status buttons', async ({ contex
   await expect(display.getByTestId('display-bid')).toHaveText('$1,100,000')
 
   // status buttons
-  await phone.getByRole('button', { name: 'On market' }).click()
+  await phone.getByRole('button', { name: 'On the market' }).click()
   await expect(display.getByTestId('display-status')).toHaveText(/On the market/i)
-  await phone.getByRole('button', { name: 'Off market' }).click()
+  await phone.getByRole('button', { name: 'Off the market' }).click()
   await expect(display.getByTestId('display-status')).not.toHaveText(/On the market/i)
 
   // ↶ key (top left) = undo last bid, one tap
   await phone.getByTestId('key-undo').click()
   await expect(display.getByTestId('display-bid')).toHaveText('$986,000')
   await expect(phone.getByTestId('mobile-current')).toHaveText('$986,000')
+
+  // 1st / 2nd call: the first tap only arms the button ("Confirm"), the second sends
+  await phone.getByTestId('call-1').click()
+  await expect(phone.getByTestId('call-1')).toContainText('Confirm')
+  await expect(display.getByTestId('display-circle')).toHaveCount(0)
+  await phone.getByTestId('call-1').click()
+  await expect(display.getByTestId('display-circle')).toContainText('1st')
+  await expect(display.getByTestId('display-status')).toHaveText(/1st call/i)
+  await phone.getByTestId('call-2').click()
+  await phone.getByTestId('call-2').click()
+  await expect(display.getByTestId('display-circle')).toContainText('2nd')
+  await shot(display, '09-display-2nd-call')
+  // a new bid clears the call
+  await keys('1', 'K')
+  await phone.getByTestId('key-plus').click()
+  await expect(display.getByTestId('display-bid')).toHaveText('$987,000')
+  await expect(display.getByTestId('display-circle')).toHaveCount(0)
+  await phone.getByTestId('key-undo').click()
+  await expect(display.getByTestId('display-bid')).toHaveText('$986,000')
+  // Remove clears the stickers
+  await phone.getByTestId('call-1').click()
+  await phone.getByTestId('call-1').click()
+  await expect(display.getByTestId('display-circle')).toContainText('1st')
+  await phone.getByRole('button', { name: 'Remove', exact: true }).click()
+  await expect(display.getByTestId('display-circle')).toHaveCount(0)
+  await expect(phone.getByRole('button', { name: 'Show stickers' })).toBeVisible()
 
   // Sold
   await phone.getByRole('button', { name: 'Sold', exact: true }).click()
@@ -344,6 +370,13 @@ test('phone console: one-tap + / SET, undo key, status buttons', async ({ contex
   await expect(display.getByTestId('display-status')).toHaveText(/Auction live/i)
   await phone.getByTestId('key-plus').click()
   await expect(display.getByTestId('display-bid')).toHaveText('$996,000')
+
+  // Withdrawn & Sold → SOLD on the screen; can be undone like Sold
+  await phone.getByRole('button', { name: 'Withdrawn & Sold' }).click()
+  await expect(phone.getByTestId('mobile-status')).toHaveText(/Withdrawn & sold/i)
+  await expect(display.getByTestId('display-status')).toHaveText(/Sold/i)
+  await phone.getByRole('button', { name: /Undo SOLD/ }).click()
+  await expect(phone.getByTestId('mobile-status')).toHaveText(/Live/i)
 
   // End is its own button, one tap
   await phone.getByTestId('m-end').click()

@@ -205,6 +205,28 @@ describe('bidding', () => {
   })
 })
 
+describe('calls and withdrawn & sold', () => {
+  it('1st/2nd call stickers clear on the next bid; Remove clears them; Withdrawn & Sold → SOLD, reopenable', async () => {
+    const c1 = await exec(admin, { type: 'FIRST_CALL' })
+    assert.equal(c1.status, 200, JSON.stringify(c1.json))
+    assert.equal(c1.json.state.call, 1)
+    assert.equal((await exec(admin, { type: 'SECOND_CALL' })).json.state.call, 2)
+    const cur = BigInt(c1.json.state.currentBidCents)
+    assert.equal((await exec(admin, { type: 'BID', amountCents: String(cur + 1_000_000n) })).json.state.call, 0)
+    await exec(admin, { type: 'FIRST_CALL' })
+    const rm = await exec(admin, { type: 'SET_OVERLAY', hidden: true })
+    assert.equal(rm.json.state.call, 0)
+    assert.equal(rm.json.state.overlayHidden, true)
+    const w = await exec(admin, { type: 'WITHDRAWN_SOLD' })
+    assert.equal(w.status, 200, JSON.stringify(w.json))
+    assert.equal(w.json.state.saleStatus, 'SOLD')
+    assert.equal(w.json.state.withdrawnSold, true)
+    const back = await exec(admin, { type: 'REOPEN' })
+    assert.equal(back.json.state.sessionStatus, 'LIVE')
+    assert.equal(back.json.state.withdrawnSold, false)
+  })
+})
+
 describe('room display', () => {
   it('pairs once, sees only public data, honours revocation', async () => {
     const req = (await anon('POST', '/display/pairing', {})).json

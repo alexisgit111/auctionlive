@@ -76,10 +76,14 @@ Works like a calculator — one tap, no confirmations (desktop: the same with En
 | `1.25M` | **SET** | sets $1,250,000 |
 | a lower amount, e.g. `1.1M` | **SET** | sets the last bid to it (recorded as a correction, reason "Set on console") |
 | `0` | **SET** | hides the price on the room screen until the next bid (SET the same amount shows it again) |
-| | **+5K** chip | adds at once |
-| | **↶ Undo bid** (top-left) | undoes the last bid at once |
+| | **↶ Undo bid** | undoes the last bid at once |
 
-**C** (top-right) clears the typing. Only the money format is checked (whole dollars, max $100M). Before the auction
+Buttons above the keypad: **On the market · 1st Call · 2nd Call · Sold** and **Pause · Withdrawn & Sold · Pass in ·
+Remove** (clears the room-screen stickers). 1st / 2nd Call need a second tap to confirm; the call sticker clears itself on
+the next bid. Keypad top row **00 · K · M · C**; **↶ Undo bid** sits between 0 and the decimal point. Touch tablets
+(iPad / Android) use this layout too.
+
+**C** clears the typing. Only the money format is checked (whole dollars, max $100M). Before the auction
 starts the room screen shows no price. Sold, Passed in, End and Undo SOLD are one tap; reasons are recorded
 automatically in the audit trail. Any staff account can take over control in one tap.
 Status buttons (Start / Pause / On market / Sold / Passed in) sit above the keypad;

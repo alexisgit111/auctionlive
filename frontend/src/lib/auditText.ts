@@ -25,6 +25,12 @@ export function describeEvent(e: AuctionEvent): string {
       return `Display moved here: ${d.label}`
     case 'DISPLAY_MOVED_OUT':
       return `Display moved to another session: ${d.label}`
+    case 'FIRST_CALL':
+      return '1st call'
+    case 'SECOND_CALL':
+      return '2nd call'
+    case 'WITHDRAWN_SOLD':
+      return `Withdrawn & SOLD${d.soldCents ? ` (last bid ${formatCents(String(d.soldCents))})` : ''}`
     case 'PRICE_HIDDEN':
       return 'Price hidden on the room screen'
     case 'PRICE_SHOWN':

@@ -160,6 +160,33 @@ describe('state machine', () => {
     expect(applyCommand(hid.state, hid.bids, { type: 'SHOW_PRICE' }, ctx()).state.priceHidden).toBe(false)
   })
 
+  it('1st / 2nd call: sticker on the room screen until the next bid or status change; Remove clears it', () => {
+    const SESSION = { property: { addressLine: '', suburb: '', city: '', heroImage: null }, salespeople: [] } as unknown as Session
+    const c1 = run([{ type: 'START' }, { type: 'BID', amountCents: K(900) }, { type: 'FIRST_CALL' }])
+    expect(c1.state.call).toBe(1)
+    expect(c1.events.at(-1)!.type).toBe('FIRST_CALL')
+    expect(toPublicState(SESSION, c1.state, 'now').call).toBe(1)
+    const c2 = applyCommand(c1.state, c1.bids, { type: 'SECOND_CALL' }, ctx())
+    expect(c2.state.call).toBe(2)
+    expect(applyCommand(c2.state, c2.bids, { type: 'BID', amountCents: K(910) }, ctx()).state.call).toBe(0) // new bid
+    expect(applyCommand(c2.state, c2.bids, { type: 'PAUSE' }, ctx()).state.call).toBe(0) // status change
+    expect(applyCommand(c2.state, c2.bids, { type: 'UNDO', bidId: c2.state.currentBidId! }, ctx()).state.call).toBe(0)
+    const removed = applyCommand(c2.state, c2.bids, { type: 'SET_OVERLAY', hidden: true }, ctx())
+    expect(removed.state).toMatchObject({ call: 0, overlayHidden: true })
+    // a call after Remove shows its sticker again
+    expect(applyCommand(removed.state, removed.bids, { type: 'FIRST_CALL' }, ctx()).state).toMatchObject({ call: 1, overlayHidden: false })
+    expect(() => run([{ type: 'START' }, { type: 'PAUSE' }, { type: 'FIRST_CALL' }])).toThrow(/live/)
+  })
+
+  it('Withdrawn & Sold ends the auction as SOLD (withdrawn flag) and can be reopened', () => {
+    const w = run([{ type: 'START' }, { type: 'BID', amountCents: K(900) }, { type: 'WITHDRAWN_SOLD' }])
+    expect(w.state).toMatchObject({ saleStatus: 'SOLD', sessionStatus: 'ENDED', withdrawnSold: true })
+    expect(w.events.at(-1)!.type).toBe('WITHDRAWN_SOLD')
+    expect(run([{ type: 'START' }, { type: 'WITHDRAWN_SOLD' }]).state.saleStatus).toBe('SOLD') // no bid needed
+    const back = applyCommand(w.state, w.bids, { type: 'REOPEN' }, ctx())
+    expect(back.state).toMatchObject({ sessionStatus: 'LIVE', saleStatus: 'NONE', withdrawnSold: false })
+  })
+
   it('reopen undoes SOLD / PASSED IN / END and restores where the auction was', () => {
     const sold = run([{ type: 'START' }, { type: 'BID', amountCents: K(1000) }, { type: 'ON_THE_MARKET' }, { type: 'SOLD' }])
     expect(allowedCommands(sold.state).has('REOPEN')).toBe(true)

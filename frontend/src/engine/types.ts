@@ -90,6 +90,10 @@ export interface AuctionState {
   welcomeOn?: boolean
   /** Room screen music (the "pause" music). Starts automatically on PAUSE, stops on RESUME / end. */
   musicOn?: boolean
+  /** Auctioneer's calls: 1 = first call, 2 = second call. Cleared by any new bid or status change. */
+  call?: 0 | 1 | 2
+  /** SOLD via "Withdrawn & Sold" (withdrawn from the auction, sold) */
+  withdrawnSold?: boolean
   /** "0 then SET": the room screen shows no price until the next bid (or SET to the same amount). */
   priceHidden?: boolean
   /** Room screen music volume 0–100 (missing = 80). */
@@ -120,6 +124,9 @@ export type EventType =
   | 'MUSIC_STOPPED'
   | 'VOLUME_SET'
   | 'PRICE_HIDDEN'
+  | 'FIRST_CALL'
+  | 'SECOND_CALL'
+  | 'WITHDRAWN_SOLD'
   | 'PRICE_SHOWN'
   | 'OVERLAY_HIDDEN'
   | 'OVERLAY_SHOWN'
@@ -159,6 +166,9 @@ export type Command =
   | { type: 'SET_MUSIC'; on: boolean }
   | { type: 'SET_VOLUME'; percent: number }
   | { type: 'HIDE_PRICE' }
+  | { type: 'FIRST_CALL' }
+  | { type: 'SECOND_CALL' }
+  | { type: 'WITHDRAWN_SOLD' }
   | { type: 'SHOW_PRICE' }
   | { type: 'SET_OVERLAY'; hidden: boolean }
   | { type: 'ON_THE_MARKET' }
@@ -229,6 +239,8 @@ export interface PublicDisplayState {
   publicStatus: PublicStatus
   /** true → the display shows no status circle and no badge sticker. */
   overlayHidden: boolean
+  /** 1 = "1st Call", 2 = "2nd Call" sticker on the room screen */
+  call: 0 | 1 | 2
   /** true → no price on the room screen (hidden with "0 SET", or the auction hasn't started) */
   priceHidden: boolean
   welcomeOn: boolean

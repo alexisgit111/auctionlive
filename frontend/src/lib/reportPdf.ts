@@ -64,6 +64,7 @@ async function rasterise(url: string, maxW: number, type: 'image/png' | 'image/j
 }
 
 export function outcomeOf(state: AuctionState): { label: string; amountLabel: string; tone: 'ok' | 'navy' } {
+  if (state.saleStatus === 'SOLD' && state.withdrawnSold) return { label: 'WITHDRAWN & SOLD', amountLabel: 'Last bid', tone: 'ok' }
   if (state.saleStatus === 'SOLD') return { label: 'SOLD', amountLabel: 'Sold for', tone: 'ok' }
   if (state.saleStatus === 'PASSED_IN') return { label: 'PASSED IN', amountLabel: 'Highest bid', tone: 'navy' }
   if (state.sessionStatus === 'ENDED') return { label: 'ENDED — NO RESULT', amountLabel: 'Highest bid', tone: 'navy' }

@@ -132,7 +132,28 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
             if (!empty($state['overlayHidden']) === $hide)
                 throw eng_transition($hide ? 'Stickers are already hidden' : 'Stickers are already shown');
             $next['overlayHidden'] = $hide;
+            if ($hide) $next['call'] = 0; // "Remove" clears every sticker, calls included
             $evType = $hide ? 'OVERLAY_HIDDEN' : 'OVERLAY_SHOWN';
+            break;
+
+        case 'FIRST_CALL':
+        case 'SECOND_CALL':
+            if ($state['sessionStatus'] !== 'LIVE') throw eng_transition('Calls can only be made while the auction is live');
+            if (!eng_sale_open($state)) throw eng_transition('Sale is already concluded');
+            $next['call'] = $type === 'FIRST_CALL' ? 1 : 2;
+            $next['overlayHidden'] = false;
+            $evType = $type;
+            break;
+
+        case 'WITHDRAWN_SOLD':
+            if (!$running) throw eng_transition('Auction is not running');
+            if (!eng_sale_open($state)) throw eng_transition('Sale is already concluded');
+            $next['concludedFrom'] = ['sessionStatus' => $state['sessionStatus'], 'saleStatus' => $state['saleStatus']];
+            $next['saleStatus'] = 'SOLD';
+            $next['sessionStatus'] = 'ENDED';
+            $next['withdrawnSold'] = true;
+            $evType = 'WITHDRAWN_SOLD';
+            $data = ['soldCents' => $state['currentBidCents']];
             break;
 
         case 'SOLD':
@@ -208,6 +229,7 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
             $next['sessionStatus'] = in_array($back['sessionStatus'] ?? '', ['LIVE', 'PAUSED'], true) ? $back['sessionStatus'] : 'PAUSED';
             $next['saleStatus'] = ($back['saleStatus'] ?? '') === 'ON_THE_MARKET' ? 'ON_THE_MARKET' : 'NONE';
             $next['concludedFrom'] = null;
+            $next['withdrawnSold'] = false;
             $evType = 'REOPENED';
             $data = ['fromSaleStatus' => $state['saleStatus']];
             break;
@@ -290,10 +312,12 @@ function eng_apply(array $state, array $bids, array $cmd, array $ctx): array
     }
 
     // Any new status brings the stickers back so the room sees it.
-    if ($type !== 'SET_OVERLAY') {
-        $statusChanged = $next['sessionStatus'] !== $state['sessionStatus'] || $next['saleStatus'] !== $state['saleStatus'];
+    $statusChanged = $next['sessionStatus'] !== $state['sessionStatus'] || $next['saleStatus'] !== $state['saleStatus'];
+    if (!in_array($type, ['SET_OVERLAY', 'FIRST_CALL', 'SECOND_CALL'], true)) {
         $next['overlayHidden'] = $statusChanged ? false : !empty($state['overlayHidden']);
     }
+    // A call stands until the next bid / correction / undo or any status change.
+    if ($statusChanged || in_array($type, ['BID', 'CORRECT', 'UNDO'], true)) $next['call'] = 0;
     // Room media follows the auction (see engine.ts)
     if ($type === 'START') $next['welcomeOn'] = false;
     // A new / corrected / undone price is always shown again.
@@ -362,6 +386,7 @@ function to_public_state(array $session, array $state): array
         'saleStatus' => $state['saleStatus'],
         'publicStatus' => derive_public_status($state),
         'overlayHidden' => !empty($state['overlayHidden']),
+        'call' => in_array((int) ($state['call'] ?? 0), [1, 2], true) ? (int) $state['call'] : 0,
         'welcomeOn' => !empty($state['welcomeOn']),
         'musicOn' => !empty($state['musicOn']),
         'volume' => (int) ($state['volume'] ?? 80),

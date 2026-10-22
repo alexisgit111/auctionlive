@@ -232,11 +232,20 @@ export function AuctionControls({
               On the market
             </button>
           ))}
+        <DeskCall n={1} active={s.call === 1} disabled={!can('FIRST_CALL')} run={run} />
+        <DeskCall n={2} active={s.call === 2} disabled={!can('SECOND_CALL')} run={run} />
         <button className="btn-ok py-3" disabled={!can('SOLD')} onClick={() => void run({ type: 'SOLD' })}>
           Sold
         </button>
         <button className="btn-ghost py-3" disabled={!can('PASSED_IN')} onClick={() => void run({ type: 'PASSED_IN' })}>
-          Passed in
+          Pass in
+        </button>
+        <button
+          className="btn col-span-2 border border-ok/50 py-2.5 text-ok hover:bg-ok/5"
+          disabled={!can('WITHDRAWN_SOLD')}
+          onClick={() => void run({ type: 'WITHDRAWN_SOLD' })}
+        >
+          Withdrawn &amp; Sold
         </button>
         <button
           className="btn-ghost"
@@ -256,7 +265,7 @@ export function AuctionControls({
             onClick={() => void run({ type: 'SET_OVERLAY', hidden: !s.overlayHidden })}
             title="Hide or show every sticker on the room display (status circle and photo badge)"
           >
-            {s.overlayHidden ? 'Show room display stickers' : 'Hide all room display stickers'}
+            {s.overlayHidden ? 'Show room screen stickers' : 'Remove room screen stickers'}
           </button>
         )}
         {s.sessionStatus !== 'NOT_STARTED' && (
@@ -289,6 +298,38 @@ export function AuctionControls({
 }
 
 /** Confirmation dialogs for Sold / Passed in / End / Undo / Correct — shared by the desktop and phone consoles. */
+/** 1st / 2nd call on the desktop: first click arms, second click (within 4 s) sends. */
+function DeskCall({ n, active, disabled, run }: { n: 1 | 2; active: boolean; disabled: boolean; run: (cmd: Command) => Promise<boolean> }) {
+  const [arm, setArm] = useState(false)
+  useEffect(() => {
+    if (!arm) return
+    const t = setTimeout(() => setArm(false), 4000)
+    return () => clearTimeout(t)
+  }, [arm])
+  const label = n === 1 ? '1st Call' : '2nd Call'
+  const color = n === 1 ? 'warn' : 'bad'
+  return (
+    <button
+      data-testid={`desk-call-${n}`}
+      className={`btn py-3 ${
+        arm
+          ? color === 'warn'
+            ? 'bg-warn text-white'
+            : 'bg-bad text-white'
+          : `border ${color === 'warn' ? 'border-warn/60 text-warn hover:bg-warn/5' : 'border-bad/50 text-bad hover:bg-bad/5'} ${active ? 'ring-2 ring-inset ring-current' : ''}`
+      }`}
+      disabled={disabled}
+      onClick={() => {
+        if (!arm) return setArm(true)
+        setArm(false)
+        void run({ type: n === 1 ? 'FIRST_CALL' : 'SECOND_CALL' })
+      }}
+    >
+      {arm ? `Confirm ${label} ✓` : label}
+    </button>
+  )
+}
+
 export function AuctionDialogs({
   view,
   run,

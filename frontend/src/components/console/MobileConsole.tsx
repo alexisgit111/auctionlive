@@ -17,7 +17,6 @@ import { derivePublicStatus } from '../../engine/publicState'
 import type { Command } from '../../engine/types'
 import { computeTarget, typeKey, type CalcResult } from '../../lib/calcEntry'
 import { formatCents, type Cents } from '../../lib/money'
-import { QUICK_INCREMENTS_K } from './BidEntry'
 import { AUDIO_TEXT, AuctionDialogs, LeasePanel, ScreenSwitchBanner, screenAudio, useDisplaysHealth, useVolume, type Dialog } from './panels'
 
 interface Props {
@@ -136,7 +135,6 @@ export function MobileConsole(p: Props) {
 
   const plus = () => op(() => computeTarget('ADD', input, current, defInc))
   const set = () => op(() => computeTarget('SET', input, current, defInc))
-  const chip = (k: number) => op(() => computeTarget('ADD', `${k}K`, current, defInc))
   const undo = async () => {
     if (!s.currentBidId || sending) return
     setSending(true)
@@ -147,16 +145,35 @@ export function MobileConsole(p: Props) {
     }
   }
 
+  // 1st / 2nd call need a second tap (confirm) within 4 s
+  const [confirmCall, setConfirmCall] = useState<1 | 2 | null>(null)
+  useEffect(() => {
+    if (confirmCall === null) return
+    const t = setTimeout(() => setConfirmCall(null), 4000)
+    return () => clearTimeout(t)
+  }, [confirmCall])
+  const tapCall = (n: 1 | 2) => {
+    if (confirmCall !== n) {
+      setConfirmCall(n)
+      buzz(10)
+      return
+    }
+    setConfirmCall(null)
+    void p.run({ type: n === 1 ? 'FIRST_CALL' : 'SECOND_CALL' }).then((ok) => ok && buzz(30))
+  }
+
   const statusTone =
-    pub === 'SOLD' ? 'bg-ok' : pub === 'ON_THE_MARKET' ? 'bg-brand' : pub === 'PAUSED' ? 'bg-warn' : pub === 'LIVE' ? 'bg-ok' : 'bg-white/20'
+    s.call === 2 ? 'bg-bad' : s.call === 1 ? 'bg-warn' : pub === 'SOLD' ? 'bg-ok' : pub === 'ON_THE_MARKET' ? 'bg-brand' : pub === 'PAUSED' ? 'bg-warn' : pub === 'LIVE' ? 'bg-ok' : 'bg-white/20'
 
   return (
-    <div className="fixed inset-0 z-30 flex touch-manipulation select-none flex-col bg-surface" data-testid="mobile-console">
+    <div className="fixed inset-0 z-30 flex touch-manipulation select-none justify-center bg-surface" data-testid="mobile-console">
+      {/* phone: full width · tablet: a centred column sized in container units */}
+      <div className="flex h-full w-full max-w-[720px] flex-col bg-surface [container-type:inline-size] md:border-x md:border-line">
       {/* ── top bar ── */}
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-white px-2 pt-[env(safe-area-inset-top)]">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-white px-2 pt-[env(safe-area-inset-top)] md:h-14">
         <select
           aria-label="Session"
-          className="min-w-0 flex-1 truncate rounded-md border border-line bg-white px-2 py-1.5 text-[15px] font-semibold text-navy"
+          className="min-w-0 flex-1 truncate rounded-md border border-line bg-white px-2 py-1.5 text-[15px] font-semibold text-navy md:text-lg"
           value={p.sessionId ?? ''}
           onChange={(e) => p.onSessionChange(e.target.value)}
         >
@@ -198,9 +215,9 @@ export function MobileConsole(p: Props) {
 
       {/* ── calculator display ── */}
       <section className="shrink-0 bg-navy px-4 pb-3 pt-2 text-white">
-        <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em]">
+        <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] md:text-sm">
           <span className={`rounded-full px-2 py-0.5 text-white ${statusTone}`} data-testid="mobile-status">
-            {PUBLIC_LABEL[pub]}
+            {s.call === 1 && (pub === 'LIVE' || pub === 'ON_THE_MARKET') ? '1st call' : s.call === 2 && (pub === 'LIVE' || pub === 'ON_THE_MARKET') ? '2nd call' : s.withdrawnSold && pub === 'SOLD' ? 'Withdrawn & sold' : PUBLIC_LABEL[pub]}
           </span>
           {s.overlayHidden && <span className="rounded-full bg-white/15 px-2 py-0.5">Stickers hidden</span>}
           <span className="ml-auto text-white/60">
@@ -211,7 +228,7 @@ export function MobileConsole(p: Props) {
         <div
           key={flash}
           data-testid="mobile-current"
-          className={`text-[clamp(2.4rem,12vw,3.6rem)] font-bold leading-none tabular-nums tracking-tight ${flash ? 'bid-flash' : ''}`}
+          className={`text-[clamp(2.4rem,12cqw,4.6rem)] font-bold leading-none tabular-nums tracking-tight ${flash ? 'bid-flash' : ''}`}
         >
           {formatCents(s.currentBidCents) === '—' ? 'No bids' : formatCents(s.currentBidCents)}
         </div>
@@ -225,7 +242,7 @@ export function MobileConsole(p: Props) {
           className={`mt-3 flex min-h-[64px] items-center gap-3 rounded-lg px-3 py-2 ${msg ? 'bg-bad/80' : done !== null ? 'bg-ok/90' : 'bg-navy-700'}`}
           aria-live="polite"
         >
-          <div className="min-w-0 flex-1 text-[13px] leading-tight">
+          <div className="min-w-0 flex-1 text-[13px] leading-tight md:text-base">
             {msg ? (
               <span className="font-semibold">{msg}</span>
             ) : done !== null ? (
@@ -246,7 +263,7 @@ export function MobileConsole(p: Props) {
         </div>
       </section>
 
-      {/* ── control / status row ── */}
+      {/* ── auction buttons ── */}
       {!p.lease.hasControl ? (
         <div className="shrink-0 p-2">
           <LeasePanel
@@ -259,18 +276,37 @@ export function MobileConsole(p: Props) {
             now={p.now}
           />
         </div>
+      ) : s.sessionStatus === 'NOT_STARTED' ? (
+        <div className="shrink-0 px-2 pt-2">
+          <Act tone="solidBrand" wide disabled={!can('START')} onClick={() => void p.run({ type: 'START' })}>
+            Start auction
+          </Act>
+        </div>
+      ) : s.sessionStatus === 'ENDED' ? (
+        <div className="shrink-0 px-2 pt-2">
+          <Act tone="navy" wide disabled={!can('REOPEN')} onClick={() => void p.run({ type: 'REOPEN', reason: 'Reopened on console' })}>
+            {s.saleStatus === 'SOLD' ? 'Undo SOLD — reopen' : s.saleStatus === 'PASSED_IN' ? 'Undo PASSED IN — reopen' : 'Reopen auction'}
+          </Act>
+        </div>
       ) : (
-        <div className="grid shrink-0 grid-cols-4 gap-1.5 px-2 pt-2">
-          {s.sessionStatus === 'NOT_STARTED' ? (
-            <Act tone="brand" disabled={!can('START')} onClick={() => void p.run({ type: 'START' })} wide>
-              Start auction
+        <div className="grid shrink-0 grid-cols-4 gap-1.5 px-2 pt-2" data-testid="auction-buttons">
+          {s.saleStatus === 'ON_THE_MARKET' ? (
+            <Act tone="navy" disabled={!can('OFF_MARKET')} onClick={() => void p.run({ type: 'OFF_MARKET' })}>
+              Off the market
             </Act>
-          ) : s.sessionStatus === 'ENDED' ? (
-            <Act tone="navyOutline" disabled={!can('REOPEN')} onClick={() => void p.run({ type: 'REOPEN', reason: 'Reopened on console' })} wide>
-              {s.saleStatus === 'SOLD' ? 'Undo SOLD — reopen' : s.saleStatus === 'PASSED_IN' ? 'Undo PASSED IN — reopen' : 'Reopen auction'}
+          ) : (
+            <Act tone="solidNavy" disabled={!can('ON_THE_MARKET')} onClick={() => void p.run({ type: 'ON_THE_MARKET' })}>
+              On the market
             </Act>
-          ) : s.sessionStatus === 'PAUSED' ? (
-            <Act tone="brand" disabled={!can('RESUME')} onClick={() => void p.run({ type: 'RESUME' })}>
+          )}
+          <CallButton n={1} active={s.call === 1} confirming={confirmCall === 1} disabled={!can('FIRST_CALL')} onTap={() => tapCall(1)} />
+          <CallButton n={2} active={s.call === 2} confirming={confirmCall === 2} disabled={!can('SECOND_CALL')} onTap={() => tapCall(2)} />
+          <Act tone="solidOk" disabled={!can('SOLD')} onClick={() => void p.run({ type: 'SOLD' })}>
+            Sold
+          </Act>
+
+          {s.sessionStatus === 'PAUSED' ? (
+            <Act tone="solidWarn" disabled={!can('RESUME')} onClick={() => void p.run({ type: 'RESUME' })}>
               Resume
             </Act>
           ) : (
@@ -278,40 +314,30 @@ export function MobileConsole(p: Props) {
               Pause
             </Act>
           )}
-          {s.sessionStatus !== 'NOT_STARTED' && s.sessionStatus !== 'ENDED' && (
-            <>
-              {s.saleStatus === 'ON_THE_MARKET' ? (
-                <Act tone="navyOutline" disabled={!can('OFF_MARKET')} onClick={() => void p.run({ type: 'OFF_MARKET' })}>
-                  Off market
-                </Act>
-              ) : (
-                <Act tone="navy" disabled={!can('ON_THE_MARKET')} onClick={() => void p.run({ type: 'ON_THE_MARKET' })}>
-                  On market
-                </Act>
-              )}
-              <Act tone="ok" disabled={!can('SOLD')} onClick={() => void p.run({ type: 'SOLD' })}>
-                Sold
-              </Act>
-              <Act tone="ghost" disabled={!can('PASSED_IN')} onClick={() => void p.run({ type: 'PASSED_IN' })}>
-                Passed in
-              </Act>
-            </>
-          )}
+          <Act tone="ok" disabled={!can('WITHDRAWN_SOLD')} onClick={() => void p.run({ type: 'WITHDRAWN_SOLD' })}>
+            Withdrawn &amp; Sold
+          </Act>
+          <Act tone="navy" disabled={!can('PASSED_IN')} onClick={() => void p.run({ type: 'PASSED_IN' })}>
+            Pass in
+          </Act>
+          <Act tone="muted" disabled={!can('SET_OVERLAY')} onClick={() => void p.run({ type: 'SET_OVERLAY', hidden: !s.overlayHidden })}>
+            {s.overlayHidden ? 'Show stickers' : 'Remove'}
+          </Act>
         </div>
       )}
 
-      {/* ── room screen media ── */}
+      {/* ── room screen media + end ── */}
       {p.lease.hasControl && (
         <div className="grid shrink-0 grid-cols-[1fr_1fr_auto] gap-1.5 px-2 pt-1.5">
           <Toggle on={!!s.welcomeOn} disabled={!can('SET_WELCOME')} onClick={() => void p.run({ type: 'SET_WELCOME', on: !s.welcomeOn })} testId="m-toggle-welcome">
-            🖼 Welcome {s.welcomeOn ? 'ON' : 'OFF'}
+            Welcome {s.welcomeOn ? 'on' : 'off'}
           </Toggle>
           <Toggle on={!!s.musicOn} disabled={!can('SET_MUSIC')} onClick={() => void p.run({ type: 'SET_MUSIC', on: !s.musicOn })} testId="m-toggle-music" warn={(s.welcomeOn || s.musicOn) && (audio === 'blocked' || audio === 'error')}>
-            ♪ Music {s.musicOn ? 'ON' : 'OFF'}
+            Music {s.musicOn ? 'on' : 'off'}
           </Toggle>
           <button
             data-testid="m-end"
-            className="h-10 rounded-lg border-2 border-bad/60 bg-white px-3 text-[14px] font-bold text-bad disabled:opacity-35"
+            className="h-9 rounded-lg px-3 text-[13px] font-semibold text-bad ring-1 ring-inset ring-bad/40 disabled:opacity-35 md:h-12 md:px-5 md:text-base"
             disabled={!can('END')}
             onClick={() => void p.run({ type: 'END' })}
           >
@@ -323,34 +349,11 @@ export function MobileConsole(p: Props) {
         <div className="shrink-0 px-3 pt-1 text-center text-[12px] font-bold text-warn">{AUDIO_TEXT[audio].text}</div>
       )}
 
-      {/* ── quick increments ── */}
-      <div className="grid shrink-0 grid-cols-6 gap-1.5 px-2 pt-1.5">
-        {QUICK_INCREMENTS_K.map((k) => {
-          return (
-            <button
-              key={k}
-              className="h-11 rounded-lg bg-brand-100 text-[15px] font-bold tabular-nums text-navy active:bg-brand/30 disabled:opacity-35"
-              disabled={!keysOn}
-              onClick={() => void chip(k)}
-            >
-              +{k}K
-            </button>
-          )
-        })}
-      </div>
-
       {/* ── keypad ── */}
       <div className="grid min-h-0 flex-1 grid-cols-4 grid-rows-5 gap-1.5 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        <button
-          data-testid="key-undo"
-          aria-label="Undo last bid"
-          className="flex flex-col items-center justify-center rounded-xl bg-warn/15 font-bold leading-none text-warn shadow-[0_1px_0_rgba(0,29,74,0.12)] active:bg-warn/30 disabled:opacity-35"
-          disabled={!can('UNDO') || sending}
-          onClick={() => void undo()}
-        >
-          <span className="text-[clamp(1.2rem,6vw,1.6rem)]">↶</span>
-          <span className="mt-0.5 text-[10px] uppercase tracking-[0.12em]">Undo bid</span>
-        </button>
+        <Key fn onClick={() => press('00')} disabled={!keysOn}>
+          00
+        </Key>
         <Key fn onClick={() => press('K')} disabled={!keysOn}>
           K
         </Key>
@@ -372,17 +375,20 @@ export function MobileConsole(p: Props) {
         <Key onClick={() => press('1')} disabled={!keysOn}>1</Key>
         <Key onClick={() => press('2')} disabled={!keysOn}>2</Key>
         <Key onClick={() => press('3')} disabled={!keysOn}>3</Key>
-        <OpKey
-          onClick={() => void set()}
-          disabled={!keysOn || sending}
-          label="Set"
-          testId="key-set"
-          small
-        >
+        <OpKey onClick={() => void set()} disabled={!keysOn || sending} label="Set" testId="key-set" small>
           SET
         </OpKey>
         <Key onClick={() => press('0')} disabled={!keysOn}>0</Key>
-        <Key onClick={() => press('00')} disabled={!keysOn}>00</Key>
+        <button
+          data-testid="key-undo"
+          aria-label="Undo last bid"
+          className="flex flex-col items-center justify-center rounded-xl bg-warn/10 font-bold leading-none text-warn ring-1 ring-inset ring-warn/30 active:bg-warn/25 disabled:opacity-35"
+          disabled={!can('UNDO') || sending}
+          onClick={() => void undo()}
+        >
+          <span className="text-[clamp(1.1rem,5.5cqw,1.6rem)]">↶</span>
+          <span className="mt-0.5 text-[10px] uppercase tracking-[0.12em] md:text-sm">Undo bid</span>
+        </button>
         <Key onClick={() => press('.')} disabled={!keysOn}>.</Key>
       </div>
 
@@ -399,6 +405,7 @@ export function MobileConsole(p: Props) {
       )}
 
       <AuctionDialogs view={p.view} pending={p.pending} run={p.run} dialog={p.dialog} setDialog={p.setDialog} correctInitial={p.correctInitial} />
+      </div>
     </div>
   )
 }
@@ -408,7 +415,7 @@ function Toggle({ on, disabled, onClick, children, testId, warn = false }: { on:
   return (
     <button
       data-testid={testId}
-      className={`relative h-10 rounded-lg text-[14px] font-bold disabled:opacity-35 ${on ? 'bg-brand text-white' : 'border border-line bg-white text-navy'}`}
+      className={`relative h-9 rounded-lg text-[13px] font-semibold disabled:opacity-35 md:h-12 md:text-base ${on ? 'bg-brand text-white' : 'bg-white text-ink-muted ring-1 ring-inset ring-line'}`}
       disabled={disabled}
       onClick={onClick}
     >
@@ -439,7 +446,7 @@ function Key({ children, onClick, disabled, fn = false, label }: { children: Rea
   return (
     <button
       aria-label={label}
-      className={`rounded-xl text-[clamp(1.4rem,7vw,2rem)] font-semibold shadow-[0_1px_0_rgba(0,29,74,0.12)] transition-colors disabled:opacity-40 ${
+      className={`rounded-xl text-[clamp(1.4rem,7cqw,2rem)] font-semibold shadow-[0_1px_0_rgba(0,29,74,0.12)] transition-colors disabled:opacity-40 ${
         fn ? 'bg-subtle-2 text-navy active:bg-line' : 'bg-white text-navy active:bg-brand-100'
       }`}
       disabled={disabled}
@@ -473,7 +480,7 @@ function OpKey({
       disabled={disabled}
       onClick={onClick}
     >
-      <span className={small ? 'text-[clamp(1.2rem,6vw,1.6rem)] tracking-[0.08em]' : 'text-[clamp(2.2rem,11vw,3rem)] leading-none'}>{children}</span>
+      <span className={small ? 'text-[clamp(1.2rem,6cqw,1.6rem)] tracking-[0.08em]' : 'text-[clamp(2.2rem,11cqw,3rem)] leading-none'}>{children}</span>
     </button>
   )
 }
@@ -488,24 +495,63 @@ function Act({
   children: ReactNode
   onClick: () => void
   disabled: boolean
-  tone: 'brand' | 'warn' | 'navy' | 'navyOutline' | 'ok' | 'ghost'
+  tone: 'solidBrand' | 'solidNavy' | 'solidOk' | 'solidWarn' | 'navy' | 'ok' | 'warn' | 'muted'
   wide?: boolean
 }) {
   const cls = {
-    brand: 'bg-brand text-white',
-    warn: 'border-2 border-warn text-warn bg-white',
-    navy: 'bg-navy text-white',
-    navyOutline: 'border-2 border-navy text-navy bg-white',
-    ok: 'bg-ok text-white',
-    ghost: 'border border-line bg-white text-navy',
+    solidBrand: 'bg-brand text-white active:bg-brand-600',
+    solidNavy: 'bg-navy text-white active:bg-navy-700',
+    solidOk: 'bg-ok text-white active:brightness-95',
+    solidWarn: 'bg-warn text-white active:brightness-95',
+    navy: 'bg-white text-navy ring-1 ring-inset ring-navy/25 active:bg-navy/5',
+    ok: 'bg-white text-ok ring-1 ring-inset ring-ok/40 active:bg-ok/5',
+    warn: 'bg-white text-warn ring-1 ring-inset ring-warn/50 active:bg-warn/5',
+    muted: 'bg-subtle-2 text-ink-muted active:bg-line',
   }[tone]
   return (
     <button
-      className={`h-12 whitespace-nowrap rounded-lg px-0.5 text-[clamp(12px,3.6vw,15px)] font-bold leading-tight tracking-tight disabled:opacity-35 ${cls} ${wide ? 'col-span-4 !text-lg' : ''}`}
+      className={`flex items-center justify-center rounded-lg px-1 text-center font-bold leading-[1.1] tracking-tight disabled:opacity-35 ${cls} ${
+        wide ? 'h-12 w-full text-lg md:h-16 md:text-xl' : 'h-[52px] text-[clamp(12px,3.4cqw,16px)] md:h-16 md:text-lg'
+      }`}
       disabled={disabled}
       onClick={onClick}
     >
       {children}
+    </button>
+  )
+}
+
+/** 1st / 2nd call: first tap arms (shows "Confirm"), second tap within 4 s sends. */
+function CallButton({ n, active, confirming, disabled, onTap }: { n: 1 | 2; active: boolean; confirming: boolean; disabled: boolean; onTap: () => void }) {
+  const label = n === 1 ? '1st Call' : '2nd Call'
+  const tone = n === 1 ? 'warn' : 'bad'
+  const cls = confirming
+    ? tone === 'warn'
+      ? 'bg-warn text-white'
+      : 'bg-bad text-white'
+    : active
+      ? tone === 'warn'
+        ? 'bg-warn/15 text-warn ring-2 ring-inset ring-warn'
+        : 'bg-bad/10 text-bad ring-2 ring-inset ring-bad'
+      : tone === 'warn'
+        ? 'bg-white text-warn ring-1 ring-inset ring-warn/50'
+        : 'bg-white text-bad ring-1 ring-inset ring-bad/40'
+  return (
+    <button
+      data-testid={`call-${n}`}
+      aria-label={confirming ? `Confirm ${label}` : label}
+      className={`flex h-[52px] flex-col items-center justify-center rounded-lg px-1 font-bold leading-[1.1] tracking-tight disabled:opacity-35 md:h-16 md:text-lg ${cls}`}
+      disabled={disabled}
+      onClick={onTap}
+    >
+      {confirming ? (
+        <>
+          <span className="text-[clamp(12px,3.4cqw,16px)] md:text-lg">Confirm</span>
+          <span className="text-[11px] font-semibold opacity-90">{label} ✓</span>
+        </>
+      ) : (
+        <span className="text-[clamp(12px,3.4cqw,16px)] md:text-lg">{label}</span>
+      )}
     </button>
   )
 }

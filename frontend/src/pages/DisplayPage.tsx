@@ -96,6 +96,16 @@ function useRecentPointer(ms = 4000) {
   return on
 }
 
+/** The auctioneer's calls — shown instead of the status circle until the next bid. */
+const CALL_CIRCLE: Record<1 | 2, { lines: string[]; cls: string }> = {
+  1: { lines: ['1st', 'Call'], cls: 'bg-warn text-white' },
+  2: { lines: ['2nd', 'Call'], cls: 'bg-bad text-white' },
+}
+const CALL_LINE: Record<1 | 2, { text: string; cls: string }> = {
+  1: { text: '1st call', cls: 'bg-warn text-white' },
+  2: { text: '2nd call', cls: 'bg-bad text-white' },
+}
+
 /** Small status line under the bid (right column). */
 const STATUS_LINE: Record<PublicStatus, { text: string; cls: string }> = {
   NOT_STARTED: { text: 'Auction starting soon', cls: 'bg-subtle text-navy' },
@@ -144,9 +154,10 @@ function Stage({ state, overlay }: { state: PublicDisplayState | null; overlay: 
   }, [state?.currentBidCents])
 
   const p = state?.property
-  const status = state ? STATUS_LINE[state.publicStatus] : null
+  const call = state?.call && (state.publicStatus === 'LIVE' || state.publicStatus === 'ON_THE_MARKET') ? state.call : 0
+  const status = state ? (call ? CALL_LINE[call] : STATUS_LINE[state.publicStatus]) : null
   const stickers = !state?.overlayHidden
-  const circle = state && stickers ? CIRCLE[state.publicStatus] : undefined
+  const circle = state && stickers ? (call ? CALL_CIRCLE[call] : CIRCLE[state.publicStatus]) : undefined
   const bid = state?.currentBidDisplay ?? ''
   const bidSize = bid.length > 11 ? 'text-[4.4cqw]' : bid.length > 10 ? 'text-[4.9cqw]' : 'text-[5.4cqw]'
   // No price before the start or after "0 SET" — no number, no dash.

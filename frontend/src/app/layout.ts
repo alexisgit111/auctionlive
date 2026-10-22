@@ -7,7 +7,8 @@ import { useEffect, useSyncExternalStore } from 'react'
 export type LayoutPref = 'auto' | 'mobile' | 'desktop'
 const KEY = 'gl-console-layout'
 const EVT = 'gl-console-layout-change'
-const QUERY = '(max-width: 767px)'
+// phones, plus touch tablets (iPad / Android, portrait or landscape) — mouse-driven computers keep the desktop console
+const QUERY = '(max-width: 767px), (pointer: coarse) and (max-width: 1400px)'
 
 function readPref(): LayoutPref {
   try {

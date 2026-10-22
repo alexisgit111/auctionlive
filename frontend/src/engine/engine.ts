@@ -73,6 +73,8 @@ export function allowedCommands(s: AuctionState): Set<Command['type']> {
     a.add('BID')
     a.add('PAUSE')
     if (s.saleStatus === 'NONE') a.add('ON_THE_MARKET')
+    a.add('FIRST_CALL')
+    a.add('SECOND_CALL')
   }
   if (s.sessionStatus === 'PAUSED') a.add('RESUME')
   if ((s.sessionStatus === 'LIVE' || s.sessionStatus === 'PAUSED') && s.saleStatus === 'ON_THE_MARKET') a.add('OFF_MARKET')
@@ -84,6 +86,7 @@ export function allowedCommands(s: AuctionState): Set<Command['type']> {
   a.add('SET_VOLUME')
   if ((s.sessionStatus === 'LIVE' || s.sessionStatus === 'PAUSED') && saleOpen(s)) {
     if (s.bidCount > 0) a.add('SOLD')
+    a.add('WITHDRAWN_SOLD')
     a.add('PASSED_IN')
     a.add('END')
     if (s.bidCount > 0) {
@@ -142,7 +145,28 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
       if (!!state.overlayHidden === !!cmd.hidden)
         throw transition(cmd.hidden ? 'Stickers are already hidden' : 'Stickers are already shown')
       next.overlayHidden = !!cmd.hidden
+      if (cmd.hidden) next.call = 0 // "Remove" clears every sticker, calls included
       type = cmd.hidden ? 'OVERLAY_HIDDEN' : 'OVERLAY_SHOWN'
+      break
+
+    case 'FIRST_CALL':
+    case 'SECOND_CALL':
+      if (state.sessionStatus !== 'LIVE') throw transition('Calls can only be made while the auction is live')
+      if (!saleOpen(state)) throw transition('Sale is already concluded')
+      next.call = cmd.type === 'FIRST_CALL' ? 1 : 2
+      next.overlayHidden = false
+      type = cmd.type
+      break
+
+    case 'WITHDRAWN_SOLD':
+      if (state.sessionStatus !== 'LIVE' && state.sessionStatus !== 'PAUSED') throw transition('Auction is not running')
+      if (!saleOpen(state)) throw transition('Sale is already concluded')
+      next.concludedFrom = { sessionStatus: state.sessionStatus, saleStatus: state.saleStatus }
+      next.saleStatus = 'SOLD'
+      next.sessionStatus = 'ENDED'
+      next.withdrawnSold = true
+      type = 'WITHDRAWN_SOLD'
+      data = { soldCents: state.currentBidCents }
       break
 
     case 'SOLD':
@@ -214,6 +238,7 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
       next.sessionStatus = back.sessionStatus === 'LIVE' || back.sessionStatus === 'PAUSED' ? back.sessionStatus : 'PAUSED'
       next.saleStatus = back.saleStatus === 'ON_THE_MARKET' ? 'ON_THE_MARKET' : 'NONE'
       next.concludedFrom = null
+      next.withdrawnSold = false
       type = 'REOPENED'
       reason = cmd.reason?.trim() || 'Reopened'
       data = { fromSaleStatus: state.saleStatus }
@@ -296,10 +321,12 @@ export function applyCommand(state: AuctionState, bids: Bid[], cmd: Command, ctx
   }
 
   // Any new status (on the market, sold, paused…) brings the stickers back so the room sees it.
-  if (cmd.type !== 'SET_OVERLAY') {
-    next.overlayHidden =
-      next.sessionStatus !== state.sessionStatus || next.saleStatus !== state.saleStatus ? false : !!state.overlayHidden
+  const statusChanged = next.sessionStatus !== state.sessionStatus || next.saleStatus !== state.saleStatus
+  if (cmd.type !== 'SET_OVERLAY' && cmd.type !== 'FIRST_CALL' && cmd.type !== 'SECOND_CALL') {
+    next.overlayHidden = statusChanged ? false : !!state.overlayHidden
   }
+  // A call stands until the next bid / correction / undo or any status change.
+  if (statusChanged || cmd.type === 'BID' || cmd.type === 'CORRECT' || cmd.type === 'UNDO') next.call = 0
   // Room media follows the auction: START closes the welcome screen; PAUSE starts the music,
   // leaving PAUSED (resume, sold, passed in, end) stops it. The buttons can still override.
   if (cmd.type === 'START') next.welcomeOn = false
