@@ -433,6 +433,7 @@ export function LeasePanel({
   onRelease,
   onTakeover,
   now,
+  flat = false,
 }: {
   lease: OperatorLease | null | undefined
   hasControl: boolean
@@ -441,11 +442,14 @@ export function LeasePanel({
   onRelease: () => void
   onTakeover: (reason: string) => Promise<void>
   now: number
+  /** Phone console: no border, calculator-style keys */
+  flat?: boolean
 }) {
   const { user } = useUser()
+  const key = flat ? 'm-key-dark px-4 py-2.5 text-sm font-semibold' : ''
   const secs = lease ? Math.max(0, Math.round((Date.parse(lease.expiresAt) - now) / 1000)) : 0
   return (
-    <div className={`panel p-4 ${hasControl ? '' : 'border-warn/40'}`}>
+    <div className={flat ? 'px-2 py-1.5' : `panel p-4 ${hasControl ? '' : 'border-warn/40'}`}>
       <div className="mb-2 flex items-center justify-between">
         <span className="panel-title">Operator control</span>
         {lease && <span className="text-[11px] text-ink-faint">lease renews · {secs}s</span>}
@@ -462,14 +466,14 @@ export function LeasePanel({
           <span className="text-sm">
             Held by <b className="text-warn">{lease.userName}</b>. This console is read-only.
           </span>
-          <button className="btn-danger px-3 py-1 text-sm" data-testid="takeover" onClick={() => void onTakeover('').catch(() => {})}>
+          <button className={key || 'btn-danger px-3 py-1 text-sm'} data-testid="takeover" onClick={() => void onTakeover('').catch(() => {})}>
             Take over
           </button>
         </div>
       ) : (
         <div className="flex items-center justify-between">
           <span className="text-sm text-ink-muted">No one is in control.</span>
-          <button className="btn-primary" onClick={onAcquire} data-testid="acquire">
+          <button className={key || 'btn-primary'} onClick={onAcquire} data-testid="acquire">
             Take control
           </button>
         </div>

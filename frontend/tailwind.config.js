@@ -11,6 +11,8 @@ export default {
         ink: { DEFAULT: '#1E2B40', muted: '#5B6B82', faint: '#8A96A8' },
         line: '#DCE3EC',
         subtle: { DEFAULT: '#F3F6FA', 2: '#E7ECF3' },
+        // Phone console: neutral calculator greys
+        m: { ink: { DEFAULT: '#2E343B', soft: '#5A626C', faint: '#9AA1AA' }, key: '#474D55' },
         ok: '#16A34A',
         warn: '#D97706',
         bad: '#DC2626',
