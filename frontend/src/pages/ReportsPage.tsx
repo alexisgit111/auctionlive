@@ -82,7 +82,7 @@ export function ReportsPage() {
     <div className="mx-auto max-w-6xl p-6 print:max-w-none print:p-0">
       <div className="mb-5 flex items-center gap-4 print:hidden">
         <h1 className="text-2xl font-bold text-navy">Scribe record &amp; audit trail</h1>
-        <select className="ml-auto rounded-md border border-line bg-surface-2 px-3 py-1.5 font-semibold text-navy" value={sid ?? ''} onChange={(e) => setSid(e.target.value)}>
+        <select className="field ml-auto !w-auto !py-1.5 font-semibold text-navy" value={sid ?? ''} onChange={(e) => setSid(e.target.value)}>
           {sessions.data?.map(({ session: s }) => (
             <option key={s.id} value={s.id}>
               {s.property.addressLine}, {s.property.suburb}
@@ -120,7 +120,7 @@ export function ReportsPage() {
       <h2 className="panel-title mb-2">Bids (append-only)</h2>
       <div className="panel mb-6 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-subtle text-left text-[10px] uppercase tracking-widest text-ink-faint">
+          <thead className="bg-white/60 text-left text-[10px] uppercase tracking-widest text-ink-faint">
             <tr>
               <th className="px-3 py-2">#</th>
               <th className="px-3 py-2">Server time</th>
@@ -155,7 +155,7 @@ export function ReportsPage() {
       <h2 className="panel-title mb-2">Audit events (immutable)</h2>
       <div className="panel overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-subtle text-left text-[10px] uppercase tracking-widest text-ink-faint">
+          <thead className="bg-white/60 text-left text-[10px] uppercase tracking-widest text-ink-faint">
             <tr>
               <th className="px-3 py-2">Seq</th>
               <th className="px-3 py-2">Server time</th>

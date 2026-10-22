@@ -40,18 +40,18 @@ export function StaffShell() {
 
   return (
     <div className="flex min-h-full flex-col">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-white px-3 md:h-20 md:gap-10 md:px-6">
+      <header className="glass-bar sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 px-3 md:h-[72px] md:gap-8 md:px-6">
         <div className="hidden sm:block">
           <Wordmark />
         </div>
-        <nav className="flex h-full min-w-0 gap-1 overflow-x-auto" aria-label="Main">
+        <nav className="flex min-w-0 gap-1 overflow-x-auto rounded-full p-1" aria-label="Main">
           {links.map((l) => (
             <NavLink
               key={l.to}
               to={l.to}
               className={({ isActive }) =>
-                `flex shrink-0 items-center border-b-[3px] px-2 text-base font-semibold md:px-4 md:text-lg ${
-                  isActive ? 'border-brand text-navy' : 'border-transparent text-ink-muted hover:text-navy'
+                `flex shrink-0 items-center rounded-full px-3 py-1.5 text-base font-semibold transition-colors md:px-4 md:text-[17px] ${
+                  isActive ? 'bg-brand text-white shadow-[0_4px_12px_-4px_rgba(0,161,233,0.7)]' : 'text-ink-muted hover:bg-white/80 hover:text-navy'
                 }`
               }
             >
@@ -61,16 +61,16 @@ export function StaffShell() {
         </nav>
         <div className="ml-auto flex shrink-0 items-center gap-4">
           {BACKEND === 'mock' && (
-            <span className="hidden rounded bg-warn/10 px-2.5 py-1 text-xs font-bold uppercase tracking-widest text-warn lg:inline">Prototype · local data</span>
+            <span className="hidden rounded-full bg-warn/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-warn lg:inline">Prototype · local data</span>
           )}
           <div className="relative">
             <button
-              className="flex items-center gap-3 rounded-lg border border-line px-1.5 py-1 text-left hover:bg-subtle md:px-3 md:py-1.5"
+              className="btn-ghost gap-3 !rounded-full !px-1.5 !py-1 text-left md:!pr-4"
               onClick={() => setMenu((m) => !m)}
               aria-expanded={menu}
               data-testid="user-menu"
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-navy text-sm font-bold text-white">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-sm font-bold text-white">
                 {user.name
                   .split(/\s+/)
                   .map((p) => p[0])
@@ -84,13 +84,13 @@ export function StaffShell() {
               </span>
             </button>
             {menu && (
-              <div className="absolute right-0 z-40 mt-2 w-48 overflow-hidden rounded-lg border border-line bg-white shadow-lg">
+              <div className="panel absolute right-0 z-40 mt-2 w-52 overflow-hidden !bg-white/90 p-1">
                 {BACKEND === 'http' && (
-                  <NavLink to="/auction/account" className="block px-4 py-2.5 text-sm font-semibold text-navy hover:bg-subtle" onClick={() => setMenu(false)}>
+                  <NavLink to="/auction/account" className="block rounded-xl px-4 py-2.5 text-sm font-semibold text-navy hover:bg-brand/10" onClick={() => setMenu(false)}>
                     Change password
                   </NavLink>
                 )}
-                <button className="block w-full px-4 py-2.5 text-left text-sm font-semibold text-bad hover:bg-subtle" onClick={() => void logout()}>
+                <button className="block w-full rounded-xl px-4 py-2.5 text-left text-sm font-semibold text-bad hover:bg-bad/10" onClick={() => void logout()}>
                   Sign out
                 </button>
               </div>
@@ -98,7 +98,6 @@ export function StaffShell() {
           </div>
         </div>
       </header>
-      <div className="h-1 bg-navy" aria-hidden />
       <main className="flex-1">
         <Outlet />
       </main>

@@ -95,7 +95,7 @@ export function MediaPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Welcome image" note="Shown full screen while “Welcome” is on. Best size 1920 × 1080 (16:9).">
-          <div className="aspect-video overflow-hidden rounded-lg border border-line bg-navy">
+          <div className="aspect-video overflow-hidden rounded-2xl border border-white bg-navy shadow-lg">
             <img src={welcomeImg} alt="Welcome screen" className="h-full w-full object-cover" data-testid="media-welcome-preview" />
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -122,7 +122,7 @@ export function MediaPage() {
             {m?.pauseMusic ? (
               <Track file={m.pauseMusic} empty="" />
             ) : (
-              <div className="rounded-md bg-subtle px-3 py-2 text-sm text-ink-muted">Same as the welcome music{m?.welcomeMusic ? '' : ' (none uploaded yet)'}</div>
+              <div className="rounded-xl bg-white/60 px-3 py-2 text-sm text-ink-muted">Same as the welcome music{m?.welcomeMusic ? '' : ' (none uploaded yet)'}</div>
             )}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <FileButton accept="audio/*,.mp3,.m4a" busy={busy === 'pauseMusic'} onFile={(f) => uploadMusic('pauseMusic', f)} label="Upload different music" testId="upload-pause-music" />
@@ -165,9 +165,9 @@ function Card({ title, note, children, className = '' }: { title: string; note: 
 
 function Track({ file, empty }: { file: MediaFile | null; empty: string }) {
   const src = useImage(file?.url ?? null)
-  if (!file) return <div className="rounded-md bg-subtle px-3 py-2 text-sm text-ink-muted">{empty}</div>
+  if (!file) return <div className="rounded-xl bg-white/60 px-3 py-2 text-sm text-ink-muted">{empty}</div>
   return (
-    <div className="rounded-md border border-line px-3 py-2">
+    <div className="rounded-xl border border-white/90 bg-white/70 px-3 py-2 shadow-sm">
       <div className="flex items-baseline justify-between gap-2 text-sm">
         <span className="truncate font-semibold text-navy" data-testid="media-track-name">
           ♪ {file.name}
@@ -204,7 +204,7 @@ function FileButton({ accept, onFile, label, busy, testId }: { accept: string; o
 
 function Progress({ value }: { value: number }) {
   return (
-    <div className="h-2 w-40 overflow-hidden rounded-full bg-subtle" aria-label="Upload progress">
+    <div className="h-2 w-40 overflow-hidden rounded-full bg-black/10" aria-label="Upload progress">
       <div className="h-full bg-brand transition-[width]" style={{ width: `${Math.round(value * 100)}%` }} />
     </div>
   )

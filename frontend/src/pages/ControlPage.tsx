@@ -146,7 +146,7 @@ export function ControlPage() {
 
   if (layout.mobile) {
     if (!view)
-      return <div className="fixed inset-0 z-30 flex items-center justify-center bg-surface text-lg text-ink-muted">Loading…</div>
+      return <div className="app-bg fixed inset-0 z-30 flex items-center justify-center text-lg text-ink-muted">Loading…</div>
     return (
       <>
         <MobileConsole
@@ -192,7 +192,7 @@ export function ControlPage() {
   return (
     <div className="flex flex-col gap-3 p-4">
       {apiOutdated && (
-        <div data-testid="api-outdated" className="rounded-lg border-2 border-bad bg-bad/10 px-4 py-3 text-sm font-semibold text-bad">
+        <div data-testid="api-outdated" className="rounded-2xl border border-bad/50 bg-bad/10 px-4 py-3 text-sm font-semibold text-bad">
           The server files are out of date (server API v{cloud.apiVersion || 1}, this page needs v{API_VERSION}). Upload the whole{' '}
           <code>api</code> folder from <code>_upload_to_public_html</code> to <code>public_html/api</code> again, purge the cache in
           Cloudways, then reload. Room-screen switching and fast updates will not work until then.
@@ -206,7 +206,7 @@ export function ControlPage() {
           </label>
           <select
             id="session"
-            className="rounded-lg border border-line bg-surface-2 px-4 py-2.5 text-lg font-semibold text-navy"
+            className="field !w-auto !py-2.5 text-lg font-semibold text-navy"
             value={sessionId ?? ''}
             onChange={(e) => setSessionId(e.target.value)}
           >
@@ -226,17 +226,17 @@ export function ControlPage() {
       </div>
 
       {offline && (
-        <div className="rounded-md border border-bad bg-bad/15 px-4 py-2 font-bold text-red-800" role="alert">
+        <div className="rounded-2xl border border-bad/50 bg-bad/15 px-4 py-2 font-bold text-red-800" role="alert">
           CLOUD OFFLINE — OFFLINE SCRIBING MODE. Bids are recorded on this laptop only and are NOT shown on the room display. Tell the auctioneer.
         </div>
       )}
       {runner.phase === 'confirming' && (
-        <div className="rounded-md border border-warn bg-warn/15 px-4 py-2 font-semibold text-amber-900" role="status">
+        <div className="rounded-2xl border border-warn/50 bg-warn/15 px-4 py-2 font-semibold text-amber-900" role="status">
           Confirming last action with the cloud… (checking whether it was recorded — do not re-enter)
         </div>
       )}
       {anyFaultActive(faults) && (
-        <div className="rounded-md border border-dashed border-warn/50 px-4 py-1.5 text-xs text-warn">Test faults are active (see Test tools).</div>
+        <div className="rounded-2xl border border-dashed border-warn/50 px-4 py-1.5 text-xs text-warn">Test faults are active (see Test tools).</div>
       )}
       {runner.error && (
         <ErrorNote onDismiss={runner.clearError}>

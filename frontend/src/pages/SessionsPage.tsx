@@ -160,8 +160,8 @@ export function SessionsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <div className="mb-5 flex items-center justify-between">
+    <div className="mx-auto max-w-6xl p-4 md:p-6">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-navy">Auction sessions</h1>
           <p className="text-sm text-ink-muted">Set up the property, increment and private reserve before auction day.</p>
@@ -235,7 +235,7 @@ export function SessionsPage() {
               <Field label="Auctioneer (internal record)">
                 <input className="field" value={form.auctioneerName} onChange={set('auctioneerName')} placeholder="e.g. John Doe" />
               </Field>
-              <div className="col-span-2 rounded-md border border-line bg-subtle p-3">
+              <div className="col-span-2 rounded-2xl border border-white/90 bg-white/60 p-3 shadow-sm">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="label mb-0">Salespeople shown on room display (max {MAX_SALESPEOPLE})</span>
                   {form.salespeople.length < MAX_SALESPEOPLE && (
@@ -300,7 +300,7 @@ export function SessionsPage() {
             </div>
             <div className="col-span-4">
               <span className="label">Property photo (shown on display)</span>
-              <div className="aspect-[4/3] overflow-hidden rounded-md border border-line">
+              <div className="aspect-[4/3] overflow-hidden rounded-2xl border border-white shadow-md">
                 <PropertyImage src={form.heroImage} alt="Property" />
               </div>
               <div className="mt-2 flex gap-2">
@@ -339,11 +339,11 @@ export function SessionsPage() {
       {sessions.isError && <ErrorNote>Cannot load sessions: {String(sessions.error)}</ErrorNote>}
       <div className="grid gap-3">
         {sessions.data?.map(({ session: s, state }) => (
-          <div key={s.id} className="panel flex items-center gap-4 p-3">
-            <div className="h-16 w-24 shrink-0 overflow-hidden rounded">
+          <div key={s.id} className="panel flex flex-wrap items-center gap-3 p-3 md:flex-nowrap md:gap-4">
+            <div className="h-14 w-20 shrink-0 overflow-hidden rounded-xl shadow-sm md:h-16 md:w-24">
               <PropertyImage src={s.property.heroImage} />
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 basis-[calc(100%-6.5rem)] md:basis-auto">
               <div className="truncate text-lg font-bold text-navy">
                 {s.property.addressLine}, {s.property.suburb}
               </div>
@@ -352,7 +352,7 @@ export function SessionsPage() {
                 {formatCents(s.defaultIncrementCents)} · {state.bidCount} bids · Current {formatCents(state.currentBidCents)}
               </div>
             </div>
-            <span className="rounded bg-subtle px-2 py-1 text-xs font-bold uppercase tracking-wider text-ink-muted">
+            <span className="ml-auto rounded-full bg-brand/10 px-3 py-1 text-xs font-bold uppercase md:ml-0 tracking-wider text-brand-600">
               {state.sessionStatus.replace('_', ' ')}
               {state.saleStatus !== 'NONE' && ` · ${state.saleStatus.replace(/_/g, ' ')}`}
             </span>

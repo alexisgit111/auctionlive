@@ -193,7 +193,7 @@ export function BidEntry(p: Props) {
               if (e.key === '+') e.preventDefault()
             }}
             placeholder={p.canBid ? 'Type amount…' : (p.disabledReason ?? 'Bidding unavailable')}
-            className={`mt-2 w-full rounded-md border-2 bg-surface px-4 py-3 text-right text-5xl font-bold tracking-tight text-navy placeholder:text-left placeholder:text-xl placeholder:font-semibold placeholder:text-ink-faint focus:outline-none ${
+            className={`mt-2 w-full rounded-2xl border-2 bg-white px-4 py-3 shadow-[inset_0_2px_6px_rgba(15,35,70,0.07)] text-right text-5xl font-bold tracking-tight text-navy placeholder:text-left placeholder:text-xl placeholder:font-semibold placeholder:text-ink-faint focus:outline-none ${
               issue ? 'border-bad' : stage === 'confirm' ? 'border-brand' : 'border-line focus:border-brand'
             } disabled:opacity-50`}
           />
@@ -202,8 +202,8 @@ export function BidEntry(p: Props) {
           <div
             id="bid-preview"
             aria-live="polite"
-            className={`mt-3 flex min-h-[84px] items-center justify-between gap-4 rounded-md px-4 py-3 ${
-              stage === 'confirm' ? 'bg-brand text-white' : issue ? 'bg-bad/10' : 'bg-subtle'
+            className={`mt-3 flex min-h-[84px] items-center justify-between gap-4 rounded-2xl px-4 py-3 ${
+              stage === 'confirm' ? 'bg-brand text-white shadow-[0_10px_24px_-10px_rgba(0,161,233,0.8)]' : issue ? 'bg-bad/10' : 'bg-white/60 shadow-[inset_0_1px_3px_rgba(15,35,70,0.06)]'
             }`}
           >
             {issue ? (
@@ -227,7 +227,7 @@ export function BidEntry(p: Props) {
                       Cancel <Kbd>Esc</Kbd>
                     </button>
                     <button
-                      className="btn bg-white px-6 py-3 text-lg text-navy hover:bg-brand-100"
+                      className="btn-ghost px-6 py-3 text-lg"
                       onClick={() => void submit()}
                       disabled={blocked}
                       data-testid="confirm-bid"
@@ -273,7 +273,7 @@ export function BidEntry(p: Props) {
                   onClick={() => loadIncrement(inc)}
                 >
                   <span className="text-lg">+{k}K</span>
-                  <span className="text-[10px] font-semibold text-white/50">F{i + 1}</span>
+                  <span className="text-[10px] font-semibold text-navy/40">F{i + 1}</span>
                 </button>
               )
             })}
@@ -290,7 +290,7 @@ export function BidEntry(p: Props) {
                     role="radio"
                     aria-checked={on}
                     onClick={() => setIncrement(inc)}
-                    className={`rounded px-2.5 py-1 text-sm font-semibold ${on ? 'bg-brand text-white' : 'bg-subtle text-ink-muted hover:bg-subtle-2'}`}
+                    className={`rounded-full px-3 py-1 text-sm font-semibold transition-colors ${on ? 'bg-brand text-white shadow-[0_4px_10px_-4px_rgba(0,161,233,0.7)]' : 'bg-white/70 text-ink-muted hover:bg-white'}`}
                   >
                     {k}K
                   </button>
@@ -317,12 +317,12 @@ export function BidEntry(p: Props) {
               disabled={!p.canBid}
               onClick={() => press(k)}
               aria-label={k === '⌫' ? 'Backspace' : k === 'C' ? 'Clear' : k}
-              className={`h-[62px] rounded-md text-2xl font-bold transition-colors disabled:opacity-30 ${
+              className={`h-[62px] text-2xl font-semibold ${
                 k === 'K' || k === 'M'
-                  ? 'bg-brand/20 text-brand hover:bg-brand/30'
+                  ? 'm-key !text-brand'
                   : k === 'C' || k === '⌫'
-                    ? 'bg-subtle text-ink-muted hover:bg-subtle-2'
-                    : 'bg-surface-3 text-navy hover:bg-brand-100'
+                    ? 'm-key !text-ink-muted'
+                    : 'm-key'
               }`}
             >
               {k}

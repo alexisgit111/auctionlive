@@ -114,7 +114,6 @@ export function CurrentBidCard({ view }: { view: StaffView }) {
 
   return (
     <div ref={flashRef} className="panel relative overflow-hidden p-5">
-      <div className="absolute inset-y-0 left-0 w-1.5 bg-brand" aria-hidden />
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="panel-title">Current accepted bid · on display</div>
@@ -148,7 +147,7 @@ export function CurrentBidCard({ view }: { view: StaffView }) {
           <span className="font-bold uppercase tracking-widest text-ink-faint">Reserve (private)</span>
           <span className="font-semibold text-ink-muted">{formatCents(reserve)}</span>
           {cur !== null && (
-            <span className={`rounded px-1.5 py-0.5 font-bold ${cur >= reserve ? 'bg-ok/15 text-ok' : 'bg-subtle text-ink-muted'}`}>
+            <span className={`rounded-full px-2.5 py-0.5 font-bold ${cur >= reserve ? 'bg-ok/15 text-ok' : 'bg-subtle text-ink-muted'}`}>
               {cur >= reserve ? 'Reserve met' : `${formatCents(reserve - cur)} below`}
             </span>
           )}
@@ -163,7 +162,7 @@ function StatusBadge({ kind, value }: { kind: 'session' | 'sale'; value: string 
     value === 'LIVE' || value === 'ON_THE_MARKET'
       ? 'bg-brand text-white'
       : value === 'PAUSED'
-        ? 'bg-warn text-navy-950'
+        ? 'bg-warn text-white'
         : value === 'SOLD'
           ? 'bg-ok text-white'
           : value === 'PASSED_IN' || value === 'ENDED'
@@ -172,7 +171,7 @@ function StatusBadge({ kind, value }: { kind: 'session' | 'sale'; value: string 
   return (
     <div className="flex items-center gap-2">
       <span className="text-[10px] font-bold uppercase tracking-widest text-ink-faint">{kind}</span>
-      <span className={`rounded px-2.5 py-1 text-xs font-bold uppercase tracking-wider ${tone}`}>{STATUS_LABEL[value] ?? value}</span>
+      <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider ${tone}`}>{STATUS_LABEL[value] ?? value}</span>
     </div>
   )
 }
@@ -213,14 +212,14 @@ export function AuctionControls({
             Resume <Kbd>P</Kbd>
           </button>
         ) : (
-          <button className="btn border border-warn/60 py-3 text-warn hover:bg-warn/10" disabled={!can('PAUSE')} onClick={() => void run({ type: 'PAUSE' })}>
+          <button className="btn-ghost py-3" disabled={!can('PAUSE')} onClick={() => void run({ type: 'PAUSE' })}>
             Pause <Kbd>P</Kbd>
           </button>
         )}
         {s.sessionStatus !== 'NOT_STARTED' &&
           (s.saleStatus === 'ON_THE_MARKET' ? (
             <button
-              className="btn border border-navy/40 py-3 text-navy hover:bg-navy/5"
+              className="btn-navy py-3"
               disabled={!can('OFF_MARKET')}
               onClick={() => void run({ type: 'OFF_MARKET' })}
               title="Take the property off the market (removes the On the market sticker)"
@@ -228,20 +227,20 @@ export function AuctionControls({
               Undo on the market
             </button>
           ) : (
-            <button className="btn-navy py-3" disabled={!can('ON_THE_MARKET')} onClick={() => void run({ type: 'ON_THE_MARKET' })}>
+            <button className="btn-primary py-3" disabled={!can('ON_THE_MARKET')} onClick={() => void run({ type: 'ON_THE_MARKET' })}>
               On the market
             </button>
           ))}
         <DeskCall n={1} active={s.call === 1} disabled={!can('FIRST_CALL')} run={run} />
         <DeskCall n={2} active={s.call === 2} disabled={!can('SECOND_CALL')} run={run} />
-        <button className="btn-ok py-3" disabled={!can('SOLD')} onClick={() => void run({ type: 'SOLD' })}>
+        <button className="btn-primary py-3" disabled={!can('SOLD')} onClick={() => void run({ type: 'SOLD' })}>
           Sold
         </button>
         <button className="btn-ghost py-3" disabled={!can('PASSED_IN')} onClick={() => void run({ type: 'PASSED_IN' })}>
           Pass in
         </button>
         <button
-          className="btn col-span-2 border border-ok/50 py-2.5 text-ok hover:bg-ok/5"
+          className="btn-ghost col-span-2 py-2.5"
           disabled={!can('WITHDRAWN_SOLD')}
           onClick={() => void run({ type: 'WITHDRAWN_SOLD' })}
         >
@@ -260,7 +259,7 @@ export function AuctionControls({
         {s.sessionStatus !== 'NOT_STARTED' && (
           <button
             data-testid="toggle-overlay"
-            className={`btn col-span-2 border ${s.overlayHidden ? 'border-brand bg-brand/10 text-navy' : 'border-line text-navy hover:bg-navy/5'}`}
+            className={`${s.overlayHidden ? 'btn-navy' : 'btn-ghost'} col-span-2`}
             disabled={!can('SET_OVERLAY')}
             onClick={() => void run({ type: 'SET_OVERLAY', hidden: !s.overlayHidden })}
             title="Hide or show every sticker on the room display (status circle and photo badge)"
@@ -271,7 +270,7 @@ export function AuctionControls({
         {s.sessionStatus !== 'NOT_STARTED' && (
           <button
             data-testid="toggle-price"
-            className={`btn col-span-2 border ${s.priceHidden ? 'border-brand bg-brand/10 text-navy' : 'border-line text-navy hover:bg-navy/5'}`}
+            className={`${s.priceHidden ? 'btn-navy' : 'btn-ghost'} col-span-2`}
             disabled={!can(s.priceHidden ? 'SHOW_PRICE' : 'HIDE_PRICE')}
             onClick={() => void run({ type: s.priceHidden ? 'SHOW_PRICE' : 'HIDE_PRICE' })}
           >
@@ -280,14 +279,14 @@ export function AuctionControls({
         )}
         {s.sessionStatus === 'ENDED' && (
           <button
-            className="btn col-span-2 border-2 border-navy py-3 text-navy hover:bg-navy/5"
+            className="btn-primary col-span-2 py-3"
             disabled={!can('REOPEN')}
             onClick={() => void run({ type: 'REOPEN', reason: 'Reopened on console' })}
           >
             {s.saleStatus === 'SOLD' ? 'Undo SOLD — reopen auction' : s.saleStatus === 'PASSED_IN' ? 'Undo PASSED IN — reopen' : 'Reopen auction'}
           </button>
         )}
-        <button className="btn col-span-2 border-2 border-bad/50 text-bad hover:bg-bad/5" disabled={!can('END')} onClick={() => void run({ type: 'END' })}>
+        <button className="btn-ghost col-span-2 !text-bad" disabled={!can('END')} onClick={() => void run({ type: 'END' })}>
           End auction
         </button>
       </div>
@@ -311,13 +310,7 @@ function DeskCall({ n, active, disabled, run }: { n: 1 | 2; active: boolean; dis
   return (
     <button
       data-testid={`desk-call-${n}`}
-      className={`btn py-3 ${
-        arm
-          ? color === 'warn'
-            ? 'bg-warn text-white'
-            : 'bg-bad text-white'
-          : `border ${color === 'warn' ? 'border-warn/60 text-warn hover:bg-warn/5' : 'border-bad/50 text-bad hover:bg-bad/5'} ${active ? 'ring-2 ring-inset ring-current' : ''}`
-      }`}
+      className={`relative py-3 ${arm ? 'btn-primary' : active ? 'btn-navy' : 'btn-ghost'}`}
       disabled={disabled}
       onClick={() => {
         if (!arm) return setArm(true)
@@ -326,6 +319,7 @@ function DeskCall({ n, active, disabled, run }: { n: 1 | 2; active: boolean; dis
       }}
     >
       {arm ? `Confirm ${label} ✓` : label}
+      {!arm && <span className={`absolute right-2.5 top-2.5 h-2 w-2 rounded-full ${active ? (color === 'warn' ? 'bg-warn' : 'bg-bad') : 'bg-black/10'}`} aria-hidden />}
     </button>
   )
 }
@@ -370,7 +364,7 @@ function ReasonChips({ reasons, value, onPick }: { reasons?: string[]; value: st
         <button
           key={r}
           type="button"
-          className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${value === r ? 'border-navy bg-navy text-white' : 'border-line bg-white text-navy hover:bg-subtle'}`}
+          className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${value === r ? 'border-brand bg-brand text-white' : 'border-line bg-white text-navy hover:bg-brand/5'}`}
           onClick={() => onPick(r)}
         >
           {r}
@@ -562,7 +556,7 @@ export function RoomMediaPanel({
       <div className="grid grid-cols-2 gap-2">
         <button
           data-testid="toggle-welcome"
-          className={`btn py-3 ${s.welcomeOn ? 'bg-brand text-white hover:bg-brand-600' : 'border border-line text-navy hover:bg-navy/5'}`}
+          className={`${s.welcomeOn ? 'btn-primary' : 'btn-ghost'} py-3`}
           disabled={!enabled || pending}
           onClick={() => void run({ type: 'SET_WELCOME', on: !s.welcomeOn })}
         >
@@ -570,7 +564,7 @@ export function RoomMediaPanel({
         </button>
         <button
           data-testid="toggle-music"
-          className={`btn py-3 ${s.musicOn ? 'bg-brand text-white hover:bg-brand-600' : 'border border-line text-navy hover:bg-navy/5'}`}
+          className={`${s.musicOn ? 'btn-primary' : 'btn-ghost'} py-3`}
           disabled={!enabled || pending}
           onClick={() => void run({ type: 'SET_MUSIC', on: !s.musicOn })}
         >
@@ -643,7 +637,7 @@ export function DisplayPanel({ view, now, cloudOk }: { view: StaffView; now: num
         {devices.map((d) => {
           const h = deviceHealth(d, view.state.stateVersion, now)
           return (
-            <li key={d.id} className="flex items-center gap-3 rounded-md bg-subtle px-3 py-2 text-sm">
+            <li key={d.id} className="flex items-center gap-3 rounded-xl border border-white/90 bg-white/70 px-3 py-2 text-sm shadow-sm">
               <span className={`h-2.5 w-2.5 rounded-full ${h.connected ? 'bg-ok' : 'bg-bad'}`} aria-hidden />
               <span className="font-semibold text-navy">{d.label}</span>
               <span className={h.connected ? 'text-ok' : 'text-bad'}>{h.connected ? 'Connected' : 'Disconnected'}</span>
@@ -715,7 +709,7 @@ export function ScreenSwitchBanner({ view, now, cloudOk, compact = false }: { vi
     }
   }
   return (
-    <div className={`border-brand bg-brand-50 ${compact ? 'border-b-2 px-3 py-2' : 'rounded-lg border-2 px-4 py-3'}`} data-testid="screen-switch">
+    <div className={`border border-brand/30 bg-brand-50/80 backdrop-blur-md ${compact ? 'rounded-2xl px-3 py-2 shadow-[0_6px_18px_-10px_rgba(0,161,233,0.6)]' : 'rounded-2xl px-4 py-3 shadow-[0_8px_24px_-12px_rgba(0,161,233,0.5)]'}`} data-testid="screen-switch">
       {online.map((d) => (
         <div key={d.id} className="flex items-center gap-3">
           <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-ok" aria-hidden />
@@ -749,7 +743,7 @@ function MoveToSession({ deviceId, currentSessionId, disabled }: { deviceId: str
     <>
     {err && <span className="ml-auto text-xs text-bad">{err}</span>}
     <select
-      className={`${err ? '' : 'ml-auto '}max-w-[11rem] rounded-md border border-line bg-surface-2 px-2 py-1 text-xs font-semibold text-navy`}
+      className={`${err ? '' : 'ml-auto '}max-w-[11rem] rounded-full border border-line bg-white px-3 py-1 text-xs font-semibold text-navy`}
       aria-label="Move screen to session"
       value=""
       disabled={disabled || busy}
@@ -818,13 +812,13 @@ function OtherScreens({ sessionId, now, cloudOk, prominent = false }: { sessionI
   }
 
   return (
-    <div className={prominent ? 'mb-3 rounded-lg border-2 border-brand/40 bg-brand/5 p-3' : 'mt-4 border-t border-line pt-3'} data-testid="other-screens">
+    <div className={prominent ? 'mb-3 rounded-2xl border border-brand/30 bg-brand/5 p-3' : 'mt-4 border-t border-line pt-3'} data-testid="other-screens">
       <div className="mb-2 text-xs font-bold uppercase tracking-widest text-ink-faint">
         {prominent ? 'Switch a room screen to this session' : 'Screens on other sessions'}
       </div>
       <ul className="space-y-2">
         {others.map(({ d, online }) => (
-          <li key={d.id} className="flex items-center gap-3 rounded-md border border-line px-3 py-2 text-sm">
+          <li key={d.id} className="flex items-center gap-3 rounded-xl border border-white/90 bg-white/70 px-3 py-2 text-sm shadow-sm">
             <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${online ? 'bg-ok' : 'bg-ink-faint'}`} aria-hidden />
             <div className="min-w-0">
               <div className="font-semibold text-navy">{d.label}</div>
@@ -857,7 +851,7 @@ export function BidHistory({ bids }: { bids: Bid[] }) {
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-surface-2 text-left text-[10px] uppercase tracking-widest text-ink-faint">
+            <thead className="sticky top-0 bg-white/90 text-left backdrop-blur text-[10px] uppercase tracking-widest text-ink-faint">
               <tr>
                 <th className="py-1 pr-2 font-bold">#</th>
                 <th className="py-1 pr-2 font-bold">Time</th>
@@ -915,7 +909,7 @@ export function OfflinePanel({ records, sessionId, offline }: { records: Offline
       )}
       <ul className="max-h-40 space-y-1 overflow-auto text-sm">
         {records.map((r) => (
-          <li key={r.localId} className="flex justify-between rounded bg-warn/5 px-2 py-1">
+          <li key={r.localId} className="flex justify-between rounded-lg bg-warn/5 px-2 py-1">
             <span className="text-ink-muted">{time(r.localCreatedAt)}</span>
             <span className="font-bold text-navy">{r.amountCents ? formatCents(r.amountCents) : r.note}</span>
             <span className="text-[10px] font-bold uppercase text-warn">Not cloud confirmed</span>
@@ -937,7 +931,7 @@ export function FaultPanel({ faults }: { faults: Faults }) {
     bus.publish({ type: 'faults.changed' })
   }
   const toggle = (k: keyof Faults, label: string, hint: string) => (
-    <label className="flex cursor-pointer items-start gap-2 rounded-md p-2 hover:bg-subtle-2">
+    <label className="flex cursor-pointer items-start gap-2 rounded-xl p-2 hover:bg-white/70">
       <input type="checkbox" className="mt-1 accent-[#00A1E9]" checked={!!faults[k]} onChange={(e) => set({ [k]: e.target.checked })} />
       <span>
         <span className="block text-sm font-semibold text-navy">{label}</span>

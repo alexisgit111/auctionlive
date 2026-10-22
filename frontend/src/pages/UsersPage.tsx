@@ -46,7 +46,7 @@ export function UsersPage() {
       {users.isError && <ErrorNote>{errText(users.error)}</ErrorNote>}
       <div className="panel overflow-hidden">
         <table className="w-full">
-          <thead className="bg-subtle text-left text-xs uppercase tracking-widest text-ink-faint">
+          <thead className="bg-white/60 text-left text-xs uppercase tracking-widest text-ink-faint">
             <tr>
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Email</th>
@@ -64,7 +64,7 @@ export function UsersPage() {
                 <td className="px-4 py-3 text-ink-muted">{u.email}</td>
                 <td className="px-4 py-3">
                   <select
-                    className="rounded-md border border-line bg-white px-2 py-1 font-semibold text-navy"
+                    className="rounded-xl border border-line bg-white px-2 py-1 font-semibold text-navy shadow-sm"
                     value={u.role}
                     disabled={u.id === user.id}
                     onChange={(e) => void update(u.id, { role: e.target.value as 'admin' | 'operator' })}

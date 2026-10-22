@@ -12,8 +12,12 @@ body,
   height: 100%;
 }
 
+html {
+  background: #e8edf3;
+}
+
 body {
-  @apply bg-surface font-sans text-ink antialiased;
+  @apply font-sans text-ink antialiased;
   font-feature-settings: 'tnum' 1, 'lnum' 1;
 }
 
@@ -23,44 +27,140 @@ body {
   outline-offset: 2px;
 }
 
+/*
+ * Look: flat surfaces, soft shadows, rounded corners, a touch of glass.
+ * Accent = Harcourts blue (#00A1E9). Everything else is white / cool grey.
+ */
 @layer components {
+  /* buttons */
   .btn {
-    @apply inline-flex select-none items-center justify-center gap-2 rounded-md px-4 py-2 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-40;
+    transition:
+      transform 80ms ease,
+      box-shadow 120ms ease,
+      background-color 120ms ease,
+      filter 120ms ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:active:not(:disabled) {
+    transform: translateY(1px) scale(0.99);
+  }
+  .btn:disabled {
+    box-shadow: none;
   }
   .btn-primary {
-    @apply btn bg-brand text-white hover:bg-brand-600;
+    @apply btn text-white;
+    background: linear-gradient(180deg, #1cb0f2 0%, #0099de 100%);
+    border: 1px solid rgba(0, 120, 180, 0.35);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.28),
+      0 1px 2px rgba(0, 80, 130, 0.18),
+      0 6px 16px -6px rgba(0, 161, 233, 0.6);
   }
+  .btn-primary:hover:not(:disabled) {
+    filter: brightness(1.05);
+  }
+  /* light-blue secondary (quick bids, toggles that are on) */
   .btn-navy {
-    @apply btn bg-navy-700 text-white hover:bg-navy-600;
+    @apply btn text-navy;
+    background: linear-gradient(180deg, #f1faff 0%, #ddf2fd 100%);
+    border: 1px solid rgba(0, 161, 233, 0.28);
+    box-shadow:
+      inset 0 1px 0 #ffffff,
+      0 1px 2px rgba(0, 60, 110, 0.08),
+      0 4px 12px -6px rgba(0, 161, 233, 0.45);
   }
+  .btn-navy:hover:not(:disabled) {
+    background: linear-gradient(180deg, #e8f7ff 0%, #d0edfc 100%);
+  }
+  /* white key */
   .btn-ghost {
-    @apply btn border border-line bg-transparent text-ink hover:bg-subtle-2;
+    @apply btn text-navy;
+    background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%);
+    border: 1px solid rgba(15, 35, 70, 0.08);
+    box-shadow:
+      inset 0 1px 0 #ffffff,
+      0 1px 2px rgba(15, 35, 70, 0.07),
+      0 4px 12px -6px rgba(15, 35, 70, 0.18);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: linear-gradient(180deg, #ffffff 0%, #eef3f8 100%);
   }
   .btn-danger {
-    @apply btn bg-bad text-white hover:bg-red-600;
+    @apply btn text-white;
+    background: linear-gradient(180deg, #ea4a4a 0%, #d42f2f 100%);
+    border: 1px solid rgba(150, 20, 20, 0.3);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      0 6px 16px -8px rgba(220, 38, 38, 0.6);
   }
   .btn-ok {
-    @apply btn bg-ok text-white hover:bg-green-700;
+    @apply btn text-white;
+    background: linear-gradient(180deg, #22b358 0%, #16a34a 100%);
+    border: 1px solid rgba(10, 100, 40, 0.3);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      0 6px 16px -8px rgba(22, 163, 74, 0.6);
   }
+
+  /* glass card */
   .panel {
-    @apply rounded-lg border border-line bg-surface-2;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.62);
+    border: 1px solid rgba(255, 255, 255, 0.85);
+    box-shadow:
+      0 1px 2px rgba(15, 35, 70, 0.05),
+      0 12px 32px -14px rgba(15, 35, 70, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    backdrop-filter: blur(18px) saturate(1.4);
   }
   .panel-title {
     @apply text-[11px] font-bold uppercase tracking-[0.14em] text-ink-muted;
   }
   .field {
-    @apply w-full rounded-md border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-faint focus:border-brand;
+    @apply w-full rounded-xl px-3 py-2 text-ink placeholder:text-ink-faint;
+    background: #ffffff;
+    border: 1px solid rgba(15, 35, 70, 0.1);
+    box-shadow: inset 0 1px 3px rgba(15, 35, 70, 0.07);
+    transition:
+      border-color 120ms ease,
+      box-shadow 120ms ease;
+  }
+  .field:focus {
+    border-color: #00a1e9;
+    box-shadow:
+      inset 0 1px 3px rgba(15, 35, 70, 0.05),
+      0 0 0 4px rgba(0, 161, 233, 0.15);
   }
   .label {
     @apply mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted;
   }
 }
 
+/* page background: cool grey with a soft blue glow */
+body,
+.app-bg {
+  background:
+    radial-gradient(900px 500px at 85% -10%, rgba(0, 161, 233, 0.12), transparent 70%),
+    radial-gradient(700px 400px at -10% 110%, rgba(0, 29, 74, 0.06), transparent 70%),
+    linear-gradient(180deg, #f3f6fa 0%, #e8edf3 100%);
+  background-attachment: fixed;
+  background-color: #e8edf3;
+}
+.glass-bar {
+  background: rgba(255, 255, 255, 0.72);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 6px 24px -14px rgba(15, 35, 70, 0.25);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  backdrop-filter: blur(20px) saturate(1.5);
+}
+
 /* ── Phone console: flat calculator keys, soft shadows, a touch of glass ── */
 .m-bg {
   background:
-    radial-gradient(120% 60% at 50% 0%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 70%),
-    linear-gradient(180deg, #eceef1 0%, #e1e4e8 100%);
+    radial-gradient(120% 50% at 50% 0%, rgba(0, 161, 233, 0.1), rgba(0, 161, 233, 0) 70%),
+    linear-gradient(180deg, #f0f4f8 0%, #e3e9f0 100%);
 }
 .m-panel {
   border-radius: 22px;
@@ -93,7 +193,7 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 .m-key {
-  color: #4b525c;
+  color: #1e2b40;
   background: linear-gradient(180deg, #ffffff 0%, #f6f7f9 100%);
   border: 1px solid rgba(15, 23, 42, 0.05);
   box-shadow:
@@ -103,12 +203,12 @@ body {
 }
 .m-key-dark {
   color: #ffffff;
-  background: linear-gradient(180deg, #535961 0%, #43484f 100%);
-  border: 1px solid rgba(0, 0, 0, 0.18);
+  background: linear-gradient(180deg, #1cb0f2 0%, #0099de 100%);
+  border: 1px solid rgba(0, 120, 180, 0.35);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    0 1px 2px rgba(15, 23, 42, 0.2),
-    0 6px 14px -6px rgba(15, 23, 42, 0.45);
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 1px 2px rgba(0, 80, 130, 0.2),
+    0 6px 16px -6px rgba(0, 161, 233, 0.65);
 }
 .m-key:active:not(:disabled),
 .m-key-dark:active:not(:disabled) {
@@ -121,7 +221,7 @@ body {
   background: #eef0f3;
 }
 .m-key-dark:active:not(:disabled) {
-  background: #3b4046;
+  background: #0089c7;
 }
 .m-key:disabled,
 .m-key-dark:disabled {

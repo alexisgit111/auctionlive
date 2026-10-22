@@ -7,9 +7,8 @@ import { ErrorNote } from '../components/ui'
 
 export function AuthCard({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   return (
-    <div className="flex min-h-full items-center justify-center bg-surface p-6">
-      <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-white shadow-xl">
-        <div className="h-1.5 bg-navy" />
+    <div className="flex min-h-full items-center justify-center p-6">
+      <div className="panel w-full max-w-md overflow-hidden !rounded-[28px] !bg-white/75">
         <div className="p-8">
           <BrandLogo className="h-10" />
           <div className="mt-2 text-xs font-bold uppercase tracking-[0.22em] text-brand">Auction Live</div>
@@ -81,7 +80,7 @@ export function LoginPage() {
         </button>
       </form>
       {DEMO_LOGIN_HINT && (
-        <div className="mt-6 rounded-md bg-warn/10 p-3 text-sm text-ink">
+        <div className="mt-6 rounded-2xl bg-warn/10 p-3 text-sm text-ink">
           <b>Prototype mode.</b> Demo accounts (password <code>{DEMO_LOGIN_HINT.password}</code>):
           <ul className="mt-1 list-inside list-disc">
             {DEMO_LOGIN_HINT.users.map((u) => (
