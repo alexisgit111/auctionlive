@@ -382,3 +382,29 @@ test('phone console: one-tap + / SET, undo key, status buttons', async ({ contex
   await phone.getByTestId('m-end').click()
   await expect(phone.getByTestId('mobile-status')).toHaveText(/Ended/i)
 })
+
+test('room screen pairs itself with the fixed PIN 9818 (no console needed)', async ({ context }) => {
+  // the prototype seed creates the demo session
+  const staff = await context.newPage()
+  await signIn(staff)
+  const screen = await context.newPage()
+  await screen.setViewportSize({ width: 1600, height: 900 })
+  await screen.goto('/auction/pair')
+  await expect(screen.getByTestId('pin-pad')).toBeVisible()
+  await shot(screen, '20-pair-pin')
+
+  // wrong PIN → message, boxes cleared
+  for (const d of '1234') await screen.getByRole('button', { name: `PIN digit ${d}` }).click()
+  await expect(screen.getByTestId('pin-error')).toContainText('Wrong PIN')
+
+  // the screen's keyboard works too
+  await screen.keyboard.type('9818')
+  await expect(screen.getByTestId('pin-sessions')).toBeVisible()
+  await shot(screen, '21-pair-choose')
+  await screen.getByTestId('pin-sessions').getByRole('button', { name: /12 Example Road/ }).click()
+  await screen.waitForURL(/\/auction\/display\//)
+
+  // the console sees the screen, and the audit trail says how it was paired
+  await staff.goto('/auction/reports')
+  await expect(staff.getByText(/Display paired on the screen \(PIN\)/).first()).toBeVisible()
+})

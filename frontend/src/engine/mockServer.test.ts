@@ -143,6 +143,25 @@ describe('display pairing & restricted access', () => {
     await expect(env.server.display.getPublicState(claim.token!)).rejects.toMatchObject({ code: 'UNAUTHENTICATED' })
   })
 
+  it('pairs a screen with the fixed PIN, retires its old pairing, and locks after 5 wrong PINs', async () => {
+    const list = await env.server.display.pinSessions('9818')
+    expect(list.map((x) => x.id)).toContain(sid)
+    const g1 = await env.server.display.pinPair('9818', sid)
+    expect((await env.server.display.getPublicState(g1.token)).sessionId).toBe(sid)
+    // pairing again from the same screen retires the first credential
+    const g2 = await env.server.display.pinPair('9818', sid, g1.token)
+    await expect(env.server.display.getPublicState(g1.token)).rejects.toMatchObject({ code: 'UNAUTHENTICATED' })
+    expect((await env.server.display.getPublicState(g2.token)).sessionId).toBe(sid)
+    const events = await env.server.staff.getEvents(sid)
+    expect(events.some((e) => e.type === 'DISPLAY_PAIRED' && e.data?.via === 'PIN')).toBe(true)
+
+    for (let i = 0; i < 5; i++) await expect(env.server.display.pinSessions('1234')).rejects.toMatchObject({ code: 'FORBIDDEN' })
+    // locked: even the right PIN is refused for 10 minutes
+    await expect(env.server.display.pinSessions('9818')).rejects.toMatchObject({ code: 'FORBIDDEN' })
+    env.advance(10 * 60_000 + 1)
+    expect((await env.server.display.pinSessions('9818')).length).toBeGreaterThan(0)
+  })
+
   it('expires pairing codes', async () => {
     const req = await env.server.display.requestPairing()
     env.advance(5 * 60_000 + 1)

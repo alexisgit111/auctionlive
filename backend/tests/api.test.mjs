@@ -381,4 +381,26 @@ describe('room media', () => {
     const dev = (await admin('GET', `/sessions/${sid}/view`)).json.devices.find((d) => d.label === 'Media screen')
     assert.equal(dev.audioStatus, 'blocked')
   })
+
+  it('pairs a screen on the screen itself with the fixed PIN (default 9818); wrong PINs are counted', async () => {
+    const w1 = await anon('POST', '/display/pin/sessions', { pin: '1111' })
+    assert.equal(w1.status, 403)
+    assert.match(w1.json.error.message, /4 tries left/)
+    // the right PIN resets the count and lists the open sessions
+    const ok = await anon('POST', '/display/pin/sessions', { pin: '9818' })
+    assert.equal(ok.status, 200, JSON.stringify(ok.json))
+    assert.ok(ok.json.some((x) => x.id === sid))
+    assert.ok(!JSON.stringify(ok.json).includes('Secret Auctioneer'))
+    assert.equal((await anon('POST', '/display/pin/pair', { pin: '0000', sessionId: sid })).status, 403)
+    const g1 = (await anon('POST', '/display/pin/pair', { pin: '9818', sessionId: sid })).json
+    assert.ok(g1.token && g1.deviceId)
+    const disp = client()
+    assert.equal((await disp('GET', '/display/state', undefined, { 'X-Display-Token': g1.token })).status, 200)
+    // pairing again from the same screen retires the old credential
+    const g2 = (await disp('POST', '/display/pin/pair', { pin: '9818', sessionId: sid }, { 'X-Display-Token': g1.token })).json
+    assert.equal((await disp('GET', '/display/state', undefined, { 'X-Display-Token': g1.token })).status, 401)
+    assert.equal((await disp('GET', '/display/state', undefined, { 'X-Display-Token': g2.token })).status, 200)
+    const ev = (await admin('GET', `/sessions/${sid}/events`)).json
+    assert.ok(ev.some((e) => e.type === 'DISPLAY_PAIRED' && e.data?.via === 'PIN'))
+  })
 })

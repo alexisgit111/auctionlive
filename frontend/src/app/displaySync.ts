@@ -163,7 +163,17 @@ export function useDisplaySync(cred: DisplayCredential | null) {
       }
     }
     // Tell the console right away when the speakers change state (playing / blocked …)
-    const offAudio = onAudioStatus(() => void beat(false))
+    // A second report shortly after fixes the rare case where two quick reports reach the server out of order.
+    let followUp: ReturnType<typeof setTimeout> | null = null
+    const offAudioNow = onAudioStatus(() => {
+      void beat(false)
+      if (followUp) clearTimeout(followUp)
+      followUp = setTimeout(() => !stopped && void beat(false), 1500)
+    })
+    const offAudio = () => {
+      offAudioNow()
+      if (followUp) clearTimeout(followUp)
+    }
     if (server.displayLongPoll) {
       void (async () => {
         while (!stopped) {

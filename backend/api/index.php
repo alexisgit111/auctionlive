@@ -8,7 +8,7 @@
 declare(strict_types=1);
 const AUCTION_API = true;
 /** Bump together with API_VERSION in frontend/src/engine/api.ts whenever routes change. */
-const API_VERSION = 4;
+const API_VERSION = 5;
 
 require __DIR__ . '/lib/core.php';
 require __DIR__ . '/lib/engine.php';
@@ -58,6 +58,8 @@ $routes = [
 
     ['POST', '/display/pairing', 'h_display_pairing_request'],
     ['GET', '/display/pairing/{id}', 'h_display_pairing_poll'],
+    ['POST', '/display/pin/sessions', 'h_display_pin_sessions'],
+    ['POST', '/display/pin/pair', 'h_display_pin_pair'],
     ['GET', '/display/state', 'h_display_state'],
     ['POST', '/display/heartbeat', 'h_display_heartbeat'],
     ['POST', '/display/ack', 'h_display_ack'],

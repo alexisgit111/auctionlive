@@ -583,6 +583,92 @@ function h_display_pairing_request(): array
     return ['pairingId' => $id, 'code' => $code, 'expiresAt' => iso($now + PAIRING_TTL_MS)];
 }
 
+// ───────────────────────── PIN pairing (on the screen itself) ─────────────────────────
+const PIN_MAX_FAILS = 5;                 // wrong PINs from one address …
+const PIN_LOCK_MS = 10 * 60_000;         // … lock that address for 10 minutes
+
+/** The fixed room-screen PIN. Default 9818; change it with 'pair_pin' in the server config. */
+function pair_pin(): string
+{
+    return (string) (cfg()['pair_pin'] ?? '9818');
+}
+
+function pin_fail_key(): string
+{
+    return 'pinfail:' . substr(hash('sha256', (string) ($_SERVER['REMOTE_ADDR'] ?? '')), 0, 40);
+}
+
+/** Throws unless the PIN is right. Wrong PINs are slowed down and counted per address. */
+function require_pair_pin(): void
+{
+    $key = pin_fail_key();
+    $r = one('SELECT v FROM meta WHERE k = ?', [$key]);
+    $f = $r ? json_decode($r['v'], true) : null;
+    $now = now_ms();
+    if (!is_array($f) || ($f['since'] ?? 0) < $now - PIN_LOCK_MS) $f = ['n' => 0, 'since' => $now];
+    if ($f['n'] >= PIN_MAX_FAILS) {
+        $mins = max(1, (int) ceil(($f['since'] + PIN_LOCK_MS - $now) / 60_000));
+        throw new ApiError('FORBIDDEN', "Too many wrong PINs — try again in $mins min", 429);
+    }
+    $pin = preg_replace('/\D/', '', (string) (body()['pin'] ?? ''));
+    if ($pin !== '' && hash_equals(pair_pin(), $pin)) {
+        if ($r) q('DELETE FROM meta WHERE k = ?', [$key]);
+        return;
+    }
+    $f['n'] += 1;
+    q(is_sqlite() ? 'INSERT OR REPLACE INTO meta (k, v) VALUES (?, ?)' : 'REPLACE INTO meta (k, v) VALUES (?, ?)', [$key, json_encode($f)]);
+    usleep(700_000);
+    $left = PIN_MAX_FAILS - $f['n'];
+    throw new ApiError('FORBIDDEN', $left > 0 ? "Wrong PIN ($left " . ($left === 1 ? 'try' : 'tries') . ' left)' : 'Wrong PIN — locked for 10 min', 403);
+}
+
+/** PIN right → the sessions this screen can show (not ended), newest first. */
+function h_display_pin_sessions(): array
+{
+    require_pair_pin();
+    $rows = q('SELECT s.data AS sdata, st.data AS tdata FROM auction_sessions s JOIN auction_states st ON st.session_id = s.id ORDER BY s.created_at DESC')->fetchAll();
+    $out = [];
+    foreach ($rows as $r) {
+        $s = jdec($r['sdata']);
+        $st = jdec($r['tdata']);
+        if (($st['sessionStatus'] ?? '') === 'ENDED') continue;
+        $out[] = [
+            'id' => $s['id'], 'addressLine' => (string) ($s['property']['addressLine'] ?? ''), 'suburb' => (string) ($s['property']['suburb'] ?? ''),
+            'scheduledAt' => $s['scheduledAt'] ?? null, 'status' => $st['sessionStatus'] ?? 'NOT_STARTED',
+        ];
+    }
+    return $out;
+}
+
+/** PIN right → pair this screen with a session and hand out its display credential. */
+function h_display_pin_pair(): array
+{
+    require_pair_pin();
+    $b = body();
+    $sid = (string) ($b['sessionId'] ?? '');
+    $label = str_field($b, 'label', 120) ?: 'Auction room screen';
+    $old = $_SERVER['HTTP_X_DISPLAY_TOKEN'] ?? '';
+    return tx(function () use ($sid, $label, $old) {
+        $state = load_state($sid, true);
+        $token = bin2hex(random_bytes(32));
+        $id = ulid();
+        q('INSERT INTO auction_devices (id, session_id, label, token_hash, approved_by, approved_at, last_acked_version) VALUES (?,?,?,?,?,?,-1)',
+            [$id, $sid, $label, hash('sha256', $token), 'screen-pin', iso()]);
+        append_meta_event($state, 'DISPLAY_PAIRED', null, 'Paired on the screen with the PIN', ['deviceId' => $id, 'label' => $label, 'via' => 'PIN']);
+        // Re-pairing a screen that was already paired: retire its old pairing.
+        if ($old !== '') {
+            $d = one('SELECT * FROM auction_devices WHERE token_hash = ? AND revoked_at IS NULL', [hash('sha256', $old)]);
+            if ($d && $d['id'] !== $id) {
+                $st = $d['session_id'] === $sid ? $state : load_state($d['session_id'], true);
+                q('UPDATE auction_devices SET revoked_at = ? WHERE id = ?', [iso(), $d['id']]);
+                append_meta_event($st, 'DISPLAY_REVOKED', null, 'Screen paired with another session', ['deviceId' => $d['id'], 'label' => $d['label']]);
+                if ($d['session_id'] === $sid) $state = $st;
+            }
+        }
+        return ['token' => $token, 'sessionId' => $sid, 'deviceId' => $id];
+    });
+}
+
 function h_display_pairing_poll(string $pid): array
 {
     return tx(function () use ($pid) {

@@ -64,6 +64,11 @@ export function RoomAudio({ state }: { state: PublicDisplayState | null }) {
   const start = async (role: Role) => {
     const el = els.current[role]
     if (!el) return
+    // Cancel a fade-out still running from "music off": its pause() would otherwise stop the music we are starting.
+    if (fades.current[role]) {
+      clearInterval(fades.current[role]!)
+      fades.current[role] = null
+    }
     if (el.paused) {
       if (role === 'welcome') el.currentTime = 0 // the welcome song starts from the top; pause music resumes
       el.volume = 0
@@ -72,13 +77,17 @@ export function RoomAudio({ state }: { state: PublicDisplayState | null }) {
         await el.play()
         setBlocked(false)
       } catch (e) {
-        if ((e as DOMException)?.name === 'NotAllowedError') {
+        const name = (e as DOMException)?.name
+        if (name === 'NotAllowedError') {
           setBlocked(true)
           setAudioStatus('blocked')
-        } else setAudioStatus('error')
+        } else if (name !== 'AbortError') setAudioStatus('error')
+        // AbortError = play() interrupted on purpose (music turned off while still loading) — not a fault;
+        // whoever paused it has already reported the new status.
         return
       }
     }
+    if (!el.paused) setAudioStatus('playing') // also when a fade-out was cancelled mid-way
     fadeTo(role, target)
   }
 

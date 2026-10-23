@@ -17,7 +17,7 @@ import { derivePublicStatus } from '../../engine/publicState'
 import type { Command } from '../../engine/types'
 import { computeTarget, typeKey, type CalcResult } from '../../lib/calcEntry'
 import { formatCents, type Cents } from '../../lib/money'
-import { AUDIO_TEXT, AuctionDialogs, LeasePanel, ScreenSwitchBanner, screenAudio, useDisplaysHealth, useVolume, type Dialog } from './panels'
+import { AUDIO_SHORT, AUDIO_TEXT, audioScreensNote, AuctionDialogs, deviceHealth, LeasePanel, pairedAt, ScreenSwitchBanner, screenAudio, useDisplaysHealth, useVolume, type Dialog } from './panels'
 
 interface Props {
   view: StaffView
@@ -356,7 +356,7 @@ export function MobileConsole(p: Props) {
           </div>
         )}
         {(s.welcomeOn || s.musicOn) && (audio === 'blocked' || audio === 'error') && (
-          <div className="-mt-1 shrink-0 px-3 text-center text-[12px] font-semibold text-warn">{AUDIO_TEXT[audio].text}</div>
+          <div className="-mt-1 shrink-0 px-3 text-center text-[12px] font-semibold text-warn">{AUDIO_TEXT[audio].text}{audioScreensNote(p.view, p.now, audio)}</div>
         )}
 
         {/* ── keypad ── */}
@@ -668,10 +668,26 @@ function MenuSheet(
           </button>
         </div>
 
-        <VolumeRow view={p.view} run={p.run} enabled={p.controlsEnabled} audioText={AUDIO_TEXT[screenAudio(p.view, p.now)]} />
+        <VolumeRow view={p.view} run={p.run} enabled={p.controlsEnabled} audioText={{ ...AUDIO_TEXT[screenAudio(p.view, p.now)], text: AUDIO_TEXT[screenAudio(p.view, p.now)].text + audioScreensNote(p.view, p.now, screenAudio(p.view, p.now)) }} />
         <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
           <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-ink-faint">Room screen</div>
           <div className="text-sm font-semibold text-m-ink">{p.screenText}</div>
+          {p.view.devices.some((d) => !d.revokedAt) && (
+            <ul className="mt-1 space-y-0.5 text-[13px]" data-testid="m-screens">
+              {p.view.devices.filter((d) => !d.revokedAt).map((d) => {
+                const h = deviceHealth(d, s.stateVersion, p.now)
+                const a = h.connected ? AUDIO_SHORT[d.audioStatus ?? 'off'] : null
+                return (
+                  <li key={d.id} className="flex flex-wrap items-center gap-x-2">
+                    <span className={`h-2 w-2 rounded-full ${h.connected ? 'bg-ok' : 'bg-bad'}`} />
+                    <span className="font-medium text-m-ink">{d.label}</span>
+                    {d.approvedAt && <span className="text-m-ink-faint">{pairedAt(d.approvedAt)}</span>}
+                    {a && <span className={`font-semibold ${a.tone}`}>{a.text}</span>}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
           <PairBox sessionId={p.view.session.id} disabled={p.cloud === 'OFFLINE'} />
           <div className="mt-3 text-[11px] font-bold uppercase tracking-[0.16em] text-ink-faint">Recent bids</div>
           {recent.length === 0 ? (

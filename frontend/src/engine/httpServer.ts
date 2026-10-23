@@ -15,6 +15,8 @@ import {
   type OperatorLease,
   type AudioStatus,
   type Pairing,
+  type PinSession,
+  type DisplayCredentialGrant,
   type RoomMedia,
   type PublicDisplayState,
   type Session,
@@ -102,6 +104,9 @@ export function createHttpServer(base = ''): AppServer {
 
   const display: AppServer['display'] = {
     requestPairing: () => call('POST', '/display/pairing', {}),
+    pinSessions: (pin: string) => call<PinSession[]>('POST', '/display/pin/sessions', { pin }),
+    pinPair: (pin: string, sessionId: string, replaceToken?: string | null) =>
+      call<DisplayCredentialGrant>('POST', '/display/pin/pair', { pin, sessionId }, replaceToken ?? null),
     // replaceToken: this screen's current credential — retired once the new pairing is claimed.
     pollPairing: (pairingId: string, replaceToken?: string | null) =>
       call<{ status: Pairing['status']; token?: string; sessionId?: string; deviceId?: string }>(

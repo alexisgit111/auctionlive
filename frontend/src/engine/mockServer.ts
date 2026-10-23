@@ -30,6 +30,8 @@ import {
   type EventType,
   type OperatorLease,
   type Pairing,
+  type PinSession,
+  type DisplayCredentialGrant,
   type Salesperson,
   MAX_SALESPEOPLE,
   type PublicDisplayState,
@@ -39,6 +41,10 @@ import {
 
 export const LEASE_TTL_MS = 15_000
 export const PAIRING_TTL_MS = 5 * 60_000
+/** Fixed room-screen PIN (prototype; the PHP server reads it from its config, default 9818). */
+export const PAIR_PIN = '9818'
+const PIN_MAX_FAILS = 5
+const PIN_LOCK_MS = 10 * 60_000
 
 interface IdemRecord {
   key: string
@@ -736,7 +742,77 @@ export function createMockServer(deps: ServerDeps) {
     return d
   }
 
+  let pinFails = { n: 0, since: 0 }
+  const requirePin = async (pin: string) => {
+    if (pinFails.since < nowMs() - PIN_LOCK_MS) pinFails = { n: 0, since: nowMs() }
+    if (pinFails.n >= PIN_MAX_FAILS) throw new ApiError('FORBIDDEN', 'Too many wrong PINs — try again in 10 min', 429)
+    if (pin.replace(/\D/g, '') === PAIR_PIN) {
+      pinFails = { n: 0, since: nowMs() }
+      return
+    }
+    pinFails.n++
+    const left = PIN_MAX_FAILS - pinFails.n
+    throw new ApiError('FORBIDDEN', left > 0 ? `Wrong PIN (${left} ${left === 1 ? 'try' : 'tries'} left)` : 'Wrong PIN — locked for 10 min', 403)
+  }
+
   const display = {
+    /** PIN right → sessions this screen can show (not ended), newest first. */
+    async pinSessions(pin: string): Promise<PinSession[]> {
+      await displayNet()
+      await requirePin(pin)
+      const db = read()
+      return Object.values(db.sessions)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+        .filter((s) => db.states[s.id]?.sessionStatus !== 'ENDED')
+        .map((s) => ({
+          id: s.id,
+          addressLine: s.property.addressLine,
+          suburb: s.property.suburb,
+          scheduledAt: s.scheduledAt ?? null,
+          status: db.states[s.id].sessionStatus,
+        }))
+    },
+
+    /** PIN right → pair this screen with the session; retires the screen's previous pairing. */
+    async pinPair(pin: string, sessionId: string, replaceToken?: string | null): Promise<DisplayCredentialGrant> {
+      await displayNet()
+      await requirePin(pin)
+      const token = uuid() + uuid()
+      const tokenHash = await sha256(token)
+      const oldHash = replaceToken ? await sha256(replaceToken) : null
+      const d = await tx((db) => {
+        requireSession(db, sessionId)
+        const dev: Device = {
+          id: ulid(nowMs()),
+          sessionId,
+          label: 'Auction room screen',
+          tokenHash,
+          approvedBy: 'screen-pin',
+          approvedAt: iso(),
+          revokedAt: null,
+          lastHeartbeatAt: null,
+          lastAckedVersion: -1,
+          lastAckedAt: null,
+        }
+        db.devices[dev.id] = dev
+        appendEvent(db, sessionId, 'DISPLAY_PAIRED', null, {
+          reason: 'Paired on the screen with the PIN',
+          data: { deviceId: dev.id, label: dev.label, via: 'PIN' },
+        })
+        const prev = oldHash ? Object.values(db.devices).find((x) => x.tokenHash === oldHash && !x.revokedAt) : undefined
+        if (prev && prev.id !== dev.id) {
+          prev.revokedAt = iso()
+          appendEvent(db, prev.sessionId, 'DISPLAY_REVOKED', null, {
+            reason: 'Screen paired with another session',
+            data: { deviceId: prev.id, label: prev.label },
+          })
+        }
+        return dev
+      })
+      notifyStaff(sessionId)
+      return { token, sessionId, deviceId: d.id }
+    },
+
     async requestPairing(): Promise<{ pairingId: string; code: string; expiresAt: string }> {
       await displayNet()
       return tx((db) => {

@@ -206,6 +206,22 @@ export interface Device {
 
 export type AudioStatus = 'off' | 'loading' | 'playing' | 'blocked' | 'error'
 
+/** A session a room screen can be paired with using the PIN (shown on /auction/pair). */
+export interface PinSession {
+  id: string
+  addressLine: string
+  suburb: string
+  scheduledAt: string | null
+  status: SessionStatus
+}
+
+/** Display credential handed to a room screen when it is paired. */
+export interface DisplayCredentialGrant {
+  token: string
+  sessionId: string
+  deviceId: string
+}
+
 export interface Pairing {
   id: string
   code: string

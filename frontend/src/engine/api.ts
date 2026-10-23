@@ -44,7 +44,7 @@ export interface MediaApi {
 }
 
 /** The PHP API this build needs (backend/api/index.php API_VERSION). Older → the console shows a warning. */
-export const API_VERSION = 4
+export const API_VERSION = 5
 
 export interface AppServer {
   mode: 'mock' | 'http'

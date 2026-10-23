@@ -487,6 +487,27 @@ export function screenAudio(view: StaffView, now: number): AudioStatus | 'no-scr
   return order.find((o) => statuses.includes(o)) ?? 'off'
 }
 
+/** With more than one screen, say how many have the problem: " (1 of 2 screens)". */
+export function audioScreensNote(view: StaffView, now: number, status: AudioStatus | 'no-screen'): string {
+  const live = view.devices.filter((d) => deviceHealth(d, view.state.stateVersion, now).connected)
+  if (live.length < 2 || status === 'no-screen' || status === 'off') return ''
+  const n = live.filter((d) => (d.audioStatus ?? 'off') === status).length
+  return ` (${n} of ${live.length} screens)`
+}
+
+/** Short per-screen sound label for screen lists. */
+export const AUDIO_SHORT: Record<AudioStatus, { text: string; tone: string } | null> = {
+  playing: { text: '🔊 Playing', tone: 'text-ok' },
+  loading: { text: 'Loading music…', tone: 'text-ink-muted' },
+  blocked: { text: '⚠ Sound blocked', tone: 'text-warn' },
+  error: { text: '⚠ Cannot play music', tone: 'text-bad' },
+  off: null,
+}
+
+/** "paired 21 Oct, 5:04 pm" — tells identical screen labels apart. */
+export const pairedAt = (iso: string) =>
+  'paired ' + new Date(iso).toLocaleString('en-NZ', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+
 export const AUDIO_TEXT: Record<AudioStatus | 'no-screen', { text: string; tone: string }> = {
   playing: { text: '🔊 Playing on the room screen', tone: 'text-ok' },
   loading: { text: 'Loading music on the room screen…', tone: 'text-ink-muted' },
@@ -588,6 +609,7 @@ export function RoomMediaPanel({
       </label>
       <div className={`mt-2 text-sm font-semibold ${AUDIO_TEXT[shownAudio].tone}`} data-testid="screen-audio">
         {AUDIO_TEXT[shownAudio].text}
+        {shownAudio !== 'off' && audioScreensNote(view, now, shownAudio)}
       </div>
       {silent && <div className="mt-1 text-xs text-warn">No music uploaded yet{user.role === 'admin' ? ' — add it under Media' : ''}.</div>}
       <div className="mt-1 text-xs text-ink-faint">Start auction closes the welcome screen · Pause starts the music</div>
@@ -637,10 +659,16 @@ export function DisplayPanel({ view, now, cloudOk }: { view: StaffView; now: num
         {devices.map((d) => {
           const h = deviceHealth(d, view.state.stateVersion, now)
           return (
-            <li key={d.id} className="flex items-center gap-3 rounded-xl border border-white/90 bg-white/70 px-3 py-2 text-sm shadow-sm">
+            <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-white/90 bg-white/70 px-3 py-2 text-sm shadow-sm">
               <span className={`h-2.5 w-2.5 rounded-full ${h.connected ? 'bg-ok' : 'bg-bad'}`} aria-hidden />
-              <span className="font-semibold text-navy">{d.label}</span>
+              <span className="whitespace-nowrap font-semibold text-navy">{d.label}</span>
+              {d.approvedAt && <span className="text-xs text-ink-faint">{pairedAt(d.approvedAt)}</span>}
               <span className={h.connected ? 'text-ok' : 'text-bad'}>{h.connected ? 'Connected' : 'Disconnected'}</span>
+              {h.connected && AUDIO_SHORT[d.audioStatus ?? 'off'] && (
+                <span className={`text-xs font-semibold ${AUDIO_SHORT[d.audioStatus ?? 'off']!.tone}`} data-testid="device-audio">
+                  {AUDIO_SHORT[d.audioStatus ?? 'off']!.text}
+                </span>
+              )}
               <span className={h.synced ? 'text-ink-muted' : 'text-warn'}>
                 v{Math.max(d.lastAckedVersion, 0)}/{view.state.stateVersion}
               </span>

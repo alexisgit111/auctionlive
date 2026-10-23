@@ -26,4 +26,8 @@ return [
     // answers the moment the auction changes. Each room display uses one PHP worker while waiting.
     // 0 = plain 1-second polling.
     'display_wait_ms' => 3500,
+
+    // Fixed PIN typed on a room screen (/auction/pair) to pair it without the console. Default 9818.
+    // 5 wrong PINs from one address lock it for 10 minutes.
+    // 'pair_pin' => '9818',
 ];

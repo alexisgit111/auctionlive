@@ -18,7 +18,7 @@ export function describeEvent(e: AuctionEvent): string {
     case 'OPERATOR_TAKEOVER':
       return `Control taken over from ${d.fromUserName ?? 'nobody'}`
     case 'DISPLAY_PAIRED':
-      return `Display paired: ${d.label}`
+      return d.via === 'PIN' ? `Display paired on the screen (PIN): ${d.label}` : `Display paired: ${d.label}`
     case 'DISPLAY_REVOKED':
       return `Display revoked: ${d.label}`
     case 'DISPLAY_MOVED_IN':
